@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
@@ -124,12 +125,12 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
+	tflog.Debug(ctx, "reading group data source", map[string]any{"id": config.Id.ValueString()})
+
 	out, httpRes, err := d.client.api.DefaultAPI.V1GroupsGet(ctx).Authorization(d.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading group", err.Error())
+		resp.Diagnostics.AddError("Error reading group", apiErrorDetail(err))
 		return
 	}
 

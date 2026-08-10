@@ -3,7 +3,10 @@ package provider
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -19,6 +22,30 @@ func insecureHTTPClient() *http.Client {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- opt-in via provider.insecure_skip_verify for lab/on-prem controllers
 		},
 	}
+}
+
+// closeBody closes an SDK call's HTTP response body, if any. The error is
+// intentionally discarded: by the time we're closing it, the body has
+// already been fully read (or the request failed before one arrived), so a
+// Close error carries no actionable information.
+func closeBody(httpRes *http.Response) {
+	if httpRes != nil {
+		_ = httpRes.Body.Close()
+	}
+}
+
+// apiErrorDetail expands an SDK call error with the API's response body.
+// graphiant-sdk-go's GenericOpenAPIError.Error() returns only the HTTP
+// status line (e.g. "400 Bad Request") — the actual validation/error detail
+// the API returned lives in its Body(), which callers must opt into reading.
+func apiErrorDetail(err error) string {
+	var apiErr *graphiant.GenericOpenAPIError
+	if errors.As(err, &apiErr) {
+		if body := strings.TrimSpace(string(apiErr.Body())); body != "" {
+			return fmt.Sprintf("%s: %s", err.Error(), body)
+		}
+	}
+	return err.Error()
 }
 
 // strPtr returns nil for an empty/unknown/null types.String, otherwise a pointer to its value.
@@ -44,15 +71,6 @@ func int64Ptr(v types.Int64) *int64 {
 		return nil
 	}
 	i := v.ValueInt64()
-	return &i
-}
-
-// int32PtrFromInt64 converts a types.Int64 into an *int32 SDK field.
-func int32PtrFromInt64(v types.Int64) *int32 {
-	if v.IsNull() || v.IsUnknown() {
-		return nil
-	}
-	i := int32(v.ValueInt64())
 	return &i
 }
 
@@ -108,16 +126,6 @@ func stringListValue(ctx context.Context, v []string) (types.List, diag.Diagnost
 		elems = []string{}
 	}
 	return types.ListValueFrom(ctx, types.StringType, elems)
-}
-
-// stringSlicePtr converts a types.List of strings into an SDK *[]string, returning nil for null/unknown.
-func stringSlicePtr(ctx context.Context, v types.List) (*[]string, diag.Diagnostics) {
-	if v.IsNull() || v.IsUnknown() {
-		return nil, nil
-	}
-	elems := make([]string, 0, len(v.Elements()))
-	diags := v.ElementsAs(ctx, &elems, false)
-	return &elems, diags
 }
 
 // timestampValue formats an SDK protobuf timestamp as RFC3339 UTC, mapping nil/zero to null.

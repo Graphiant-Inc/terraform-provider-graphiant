@@ -3,6 +3,8 @@
 [![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Terraform Plugin Framework](https://img.shields.io/badge/terraform--plugin--framework-1.19-844FBA.svg)](https://developer.hashicorp.com/terraform/plugin/framework)
+[![Tests](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/test.yml/badge.svg)](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/test.yml)
+[![Lint](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/lint.yml/badge.svg)](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/lint.yml)
 
 A Terraform provider for [Graphiant Network-as-a-Service (NaaS)](https://www.graphiant.com),
 built on [`terraform-plugin-framework`](https://developer.hashicorp.com/terraform/plugin/framework)

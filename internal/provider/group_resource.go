@@ -4,22 +4,28 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
 
 var (
-	_ resource.Resource                = &groupResource{}
-	_ resource.ResourceWithConfigure   = &groupResource{}
-	_ resource.ResourceWithImportState = &groupResource{}
+	_ resource.Resource                     = &groupResource{}
+	_ resource.ResourceWithConfigure        = &groupResource{}
+	_ resource.ResourceWithConfigValidators = &groupResource{}
+	_ resource.ResourceWithImportState      = &groupResource{}
 )
 
 func NewGroupResource() resource.Resource {
@@ -63,10 +69,16 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"name": schema.StringAttribute{
 				Required:    true,
 				Description: "Group name.",
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"description": schema.StringAttribute{
 				Required:    true,
 				Description: "Group description.",
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"group_type": schema.StringAttribute{
 				Optional:    true,
@@ -92,19 +104,34 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"time_window_start": schema.Int64Attribute{
 				Optional:    true,
-				Description: "Unix timestamp for the start of the access time window, if the group is time-restricted.",
+				Description: "Unix timestamp for the start of the access time window. Must be set together with time_window_end.",
 			},
 			"time_window_end": schema.Int64Attribute{
 				Optional:    true,
-				Description: "Unix timestamp for the end of the access time window, if the group is time-restricted.",
+				Description: "Unix timestamp for the end of the access time window. Must be set together with time_window_start.",
 			},
 			"permissions": permissionsSchemaAttribute(false),
+			// enterprise_ids is purely server-derived (from group
+			// membership elsewhere) and never changes as a side effect of
+			// updating the fields above.
 			"enterprise_ids": schema.ListAttribute{
 				Computed:    true,
 				ElementType: types.Int64Type,
 				Description: "Enterprises this group has access to.",
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
+	}
+}
+
+func (r *groupResource) ConfigValidators(_ context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.RequiredTogether(
+			path.MatchRoot("time_window_start"),
+			path.MatchRoot("time_window_end"),
+		),
 	}
 }
 
@@ -144,9 +171,7 @@ func (r *groupResource) flatten(ctx context.Context, g *graphiant.IamGroup, m *g
 // groups, so this lists every group and filters client-side.
 func (r *groupResource) findGroup(ctx context.Context, id string) (*graphiant.IamGroup, error) {
 	out, httpRes, err := r.client.api.DefaultAPI.V1GroupsGet(ctx).Authorization(r.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
 		return nil, err
 	}
@@ -166,9 +191,7 @@ func (r *groupResource) findGroup(ctx context.Context, id string) (*graphiant.Ia
 // server-assigned ID).
 func (r *groupResource) findGroupByName(ctx context.Context, name string) (*graphiant.IamGroup, error) {
 	out, httpRes, err := r.client.api.DefaultAPI.V1GroupsGet(ctx).Authorization(r.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +212,8 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	tflog.Debug(ctx, "creating group", map[string]any{"name": plan.Name.ValueString()})
 
 	body := graphiant.NewV1GroupsPutRequest(plan.Description.ValueString(), plan.Name.ValueString())
 	if v := strPtr(plan.GroupType); v != nil {
@@ -211,17 +236,15 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 
 	httpRes, err := r.client.api.DefaultAPI.V1GroupsPut(ctx).Authorization(r.client.authHeader()).V1GroupsPutRequest(*body).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating group", err.Error())
+		resp.Diagnostics.AddError("Error creating group", apiErrorDetail(err))
 		return
 	}
 
 	group, err := r.findGroupByName(ctx, plan.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading back created group", err.Error())
+		resp.Diagnostics.AddError("Error reading back created group", apiErrorDetail(err))
 		return
 	}
 	if group == nil {
@@ -231,6 +254,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	resp.Diagnostics.Append(r.flatten(ctx, group, &plan)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	tflog.Trace(ctx, "created group", map[string]any{"id": plan.Id.ValueString()})
 }
 
 func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -240,12 +264,15 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		return
 	}
 
+	tflog.Debug(ctx, "reading group", map[string]any{"id": state.Id.ValueString()})
+
 	group, err := r.findGroup(ctx, state.Id.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading group", err.Error())
+		resp.Diagnostics.AddError("Error reading group", apiErrorDetail(err))
 		return
 	}
 	if group == nil {
+		tflog.Debug(ctx, "group no longer exists, removing from state", map[string]any{"id": state.Id.ValueString()})
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -261,6 +288,8 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	tflog.Debug(ctx, "updating group", map[string]any{"id": state.Id.ValueString()})
 
 	body := graphiant.NewV1GroupsIdPatchRequestWithDefaults()
 	if v := strPtr(plan.Description); v != nil {
@@ -283,17 +312,15 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 
 	httpRes, err := r.client.api.DefaultAPI.V1GroupsIdPatch(ctx, state.Id.ValueString()).Authorization(r.client.authHeader()).V1GroupsIdPatchRequest(*body).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error updating group", err.Error())
+		resp.Diagnostics.AddError("Error updating group", apiErrorDetail(err))
 		return
 	}
 
 	group, err := r.findGroup(ctx, state.Id.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading back updated group", err.Error())
+		resp.Diagnostics.AddError("Error reading back updated group", apiErrorDetail(err))
 		return
 	}
 	if group == nil {
@@ -303,6 +330,7 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 
 	resp.Diagnostics.Append(r.flatten(ctx, group, &plan)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	tflog.Trace(ctx, "updated group", map[string]any{"id": plan.Id.ValueString()})
 }
 
 func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -312,12 +340,12 @@ func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 		return
 	}
 
+	tflog.Debug(ctx, "deleting group", map[string]any{"id": state.Id.ValueString()})
+
 	httpRes, err := r.client.api.DefaultAPI.V1GroupsIdDelete(ctx, state.Id.ValueString()).Authorization(r.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error deleting group", err.Error())
+		resp.Diagnostics.AddError("Error deleting group", apiErrorDetail(err))
 	}
 }
 

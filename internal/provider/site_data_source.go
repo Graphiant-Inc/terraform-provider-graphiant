@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
@@ -134,12 +135,12 @@ func (d *siteDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
+	tflog.Debug(ctx, "reading site data source", map[string]any{"id": config.Id.ValueInt64()})
+
 	out, httpRes, err := d.client.api.DefaultAPI.V1SitesGet(ctx).Authorization(d.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading site", err.Error())
+		resp.Diagnostics.AddError("Error reading site", apiErrorDetail(err))
 		return
 	}
 

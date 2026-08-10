@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var (
@@ -56,12 +57,12 @@ func (d *groupsDataSource) Configure(_ context.Context, req datasource.Configure
 }
 
 func (d *groupsDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
+	tflog.Debug(ctx, "reading groups data source")
+
 	out, httpRes, err := d.client.api.DefaultAPI.V1GroupsGet(ctx).Authorization(d.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading groups", err.Error())
+		resp.Diagnostics.AddError("Error reading groups", apiErrorDetail(err))
 		return
 	}
 

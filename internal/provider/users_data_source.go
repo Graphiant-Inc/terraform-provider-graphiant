@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var (
@@ -56,12 +57,12 @@ func (d *usersDataSource) Configure(_ context.Context, req datasource.ConfigureR
 }
 
 func (d *usersDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
+	tflog.Debug(ctx, "reading users data source")
+
 	out, httpRes, err := d.client.api.DefaultAPI.V1UsersGet(ctx).Authorization(d.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading users", err.Error())
+		resp.Diagnostics.AddError("Error reading users", apiErrorDetail(err))
 		return
 	}
 
