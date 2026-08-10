@@ -2,7 +2,6 @@ package provider
 
 import (
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -21,22 +20,6 @@ type locationModel struct {
 	Latitude     types.Float64 `tfsdk:"latitude"`
 	Longitude    types.Float64 `tfsdk:"longitude"`
 	Notes        types.String  `tfsdk:"notes"`
-}
-
-func locationAttrTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"address_line1": types.StringType,
-		"address_line2": types.StringType,
-		"city":          types.StringType,
-		"state":         types.StringType,
-		"state_code":    types.StringType,
-		"province_code": types.StringType,
-		"country":       types.StringType,
-		"country_code":  types.StringType,
-		"latitude":      types.Float64Type,
-		"longitude":     types.Float64Type,
-		"notes":         types.StringType,
-	}
 }
 
 func locationSchemaAttribute(computed bool) schema.SingleNestedAttribute {

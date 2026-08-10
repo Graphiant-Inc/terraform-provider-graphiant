@@ -4,13 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
@@ -72,23 +77,72 @@ func (r *siteResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"name": schema.StringAttribute{
 				Required:    true,
 				Description: "Site name.",
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"notes": schema.StringAttribute{
 				Optional:    true,
 				Description: "Free-form notes about the site.",
 			},
-			"location":                  locationSchemaAttribute(false),
-			"address":                   schema.StringAttribute{Computed: true, Description: "Resolved postal address for the site location."},
-			"edge_count":                schema.Int64Attribute{Computed: true, Description: "Number of edge devices onboarded at this site."},
-			"segment_count":             schema.Int64Attribute{Computed: true, Description: "Number of LAN segments configured at this site."},
-			"policy_reference_count":    schema.Int64Attribute{Computed: true, Description: "Number of policies referencing this site."},
-			"site_list_reference_count": schema.Int64Attribute{Computed: true, Description: "Number of site lists referencing this site."},
+			"location": locationSchemaAttribute(false),
+			// address/edge_count/segment_count/policy_reference_count/site_list_reference_count/tags
+			// are all server-derived and don't change as a side effect of
+			// updating the fields above, so UseStateForUnknown keeps them
+			// out of the plan diff when nothing relevant changed.
+			"address": schema.StringAttribute{
+				Computed:    true,
+				Description: "Resolved postal address for the site location.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"edge_count": schema.Int64Attribute{
+				Computed:    true,
+				Description: "Number of edge devices onboarded at this site.",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"segment_count": schema.Int64Attribute{
+				Computed:    true,
+				Description: "Number of LAN segments configured at this site.",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"policy_reference_count": schema.Int64Attribute{
+				Computed:    true,
+				Description: "Number of policies referencing this site.",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"site_list_reference_count": schema.Int64Attribute{
+				Computed:    true,
+				Description: "Number of site lists referencing this site.",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
 			"tags": schema.ListAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
 				Description: "Tags applied to the site.",
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"created_at": schema.StringAttribute{Computed: true, Description: "Creation timestamp (RFC3339, UTC)."},
+			"created_at": schema.StringAttribute{
+				Computed:    true,
+				Description: "Creation timestamp (RFC3339, UTC).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			// updated_at deliberately has no UseStateForUnknown: it changes
+			// on every successful Update, so it should show as
+			// "(known after apply)" whenever the resource is modified.
 			"updated_at": schema.StringAttribute{Computed: true, Description: "Last update timestamp (RFC3339, UTC)."},
 		},
 	}
@@ -106,7 +160,7 @@ func (r *siteResource) Configure(_ context.Context, req resource.ConfigureReques
 	r.client = client
 }
 
-func (r *siteResource) expandNewSite(ctx context.Context, m *siteResourceModel) *graphiant.ManaV2NewSite {
+func (r *siteResource) expandNewSite(_ context.Context, m *siteResourceModel) *graphiant.ManaV2NewSite {
 	site := graphiant.NewManaV2NewSiteWithDefaults()
 	if v := strPtr(m.Name); v != nil {
 		site.SetName(*v)
@@ -147,6 +201,8 @@ func (r *siteResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
+	tflog.Debug(ctx, "creating site", map[string]any{"name": plan.Name.ValueString()})
+
 	body := graphiant.NewV1SitesPostRequestWithDefaults()
 	body.SetSite(*r.expandNewSite(ctx, &plan))
 	if v := int64Ptr(plan.EnterpriseId); v != nil {
@@ -154,11 +210,9 @@ func (r *siteResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	out, httpRes, err := r.client.api.DefaultAPI.V1SitesPost(ctx).Authorization(r.client.authHeader()).V1SitesPostRequest(*body).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating site", err.Error())
+		resp.Diagnostics.AddError("Error creating site", apiErrorDetail(err))
 		return
 	}
 	if out == nil || out.Site == nil {
@@ -168,15 +222,14 @@ func (r *siteResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	resp.Diagnostics.Append(r.flatten(ctx, out.Site, &plan)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	tflog.Trace(ctx, "created site", map[string]any{"id": plan.Id.ValueInt64()})
 }
 
 // findSite looks up a site by ID. There is no get-by-id endpoint for sites,
 // so this lists every site and filters client-side.
 func (r *siteResource) findSite(ctx context.Context, id int64) (*graphiant.ManaV2Site, error) {
 	out, httpRes, err := r.client.api.DefaultAPI.V1SitesGet(ctx).Authorization(r.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
 		return nil, err
 	}
@@ -198,12 +251,15 @@ func (r *siteResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	tflog.Debug(ctx, "reading site", map[string]any{"id": state.Id.ValueInt64()})
+
 	site, err := r.findSite(ctx, state.Id.ValueInt64())
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading site", err.Error())
+		resp.Diagnostics.AddError("Error reading site", apiErrorDetail(err))
 		return
 	}
 	if site == nil {
+		tflog.Debug(ctx, "site no longer exists, removing from state", map[string]any{"id": state.Id.ValueInt64()})
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -220,15 +276,15 @@ func (r *siteResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
+	tflog.Debug(ctx, "updating site", map[string]any{"id": state.Id.ValueInt64()})
+
 	body := graphiant.NewV1SitesSiteIdPostRequestWithDefaults()
 	body.SetSite(*r.expandNewSite(ctx, &plan))
 
 	out, httpRes, err := r.client.api.DefaultAPI.V1SitesSiteIdPost(ctx, state.Id.ValueInt64()).Authorization(r.client.authHeader()).V1SitesSiteIdPostRequest(*body).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error updating site", err.Error())
+		resp.Diagnostics.AddError("Error updating site", apiErrorDetail(err))
 		return
 	}
 	if out == nil || out.Site == nil {
@@ -238,6 +294,7 @@ func (r *siteResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 	resp.Diagnostics.Append(r.flatten(ctx, out.Site, &plan)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	tflog.Trace(ctx, "updated site", map[string]any{"id": plan.Id.ValueInt64()})
 }
 
 func (r *siteResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -247,12 +304,12 @@ func (r *siteResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
+	tflog.Debug(ctx, "deleting site", map[string]any{"id": state.Id.ValueInt64()})
+
 	httpRes, err := r.client.api.DefaultAPI.V1SitesSiteIdDelete(ctx, state.Id.ValueInt64()).Authorization(r.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error deleting site", err.Error())
+		resp.Diagnostics.AddError("Error deleting site", apiErrorDetail(err))
 	}
 }
 

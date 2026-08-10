@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var (
@@ -56,12 +57,12 @@ func (d *devicesDataSource) Configure(_ context.Context, req datasource.Configur
 }
 
 func (d *devicesDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
+	tflog.Debug(ctx, "reading devices data source")
+
 	out, httpRes, err := d.client.api.DefaultAPI.V1DevicesGet(ctx).Authorization(d.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading devices", err.Error())
+		resp.Diagnostics.AddError("Error reading devices", apiErrorDetail(err))
 		return
 	}
 

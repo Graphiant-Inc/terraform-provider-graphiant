@@ -1,4 +1,4 @@
-.PHONY: build test vet fmt fmt-check tidy install help
+.PHONY: build test vet fmt fmt-check lint tidy install help
 
 ## build: Compile the provider binary
 build:
@@ -24,6 +24,10 @@ fmt-check:
 		echo "$$unformatted"; \
 		exit 1; \
 	fi
+
+## lint: Run golangci-lint (same config as CI)
+lint:
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...
 
 ## tidy: Tidy and verify go.mod / go.sum
 tidy:

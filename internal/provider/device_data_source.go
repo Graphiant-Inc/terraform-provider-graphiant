@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
@@ -138,12 +139,12 @@ func (d *deviceDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
+	tflog.Debug(ctx, "reading device data source", map[string]any{"id": config.Id.ValueInt64()})
+
 	out, httpRes, err := d.client.api.DefaultAPI.V1DevicesDeviceIdGet(ctx, config.Id.ValueInt64()).Authorization(d.client.authHeader()).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading device", err.Error())
+		resp.Diagnostics.AddError("Error reading device", apiErrorDetail(err))
 		return
 	}
 	if out == nil || out.Device == nil {

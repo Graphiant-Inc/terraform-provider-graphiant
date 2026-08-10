@@ -1,0 +1,49 @@
+name: Tests
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'CHANGELOG.md'
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - run: go mod download
+      - run: go build -v ./...
+
+  test:
+    name: Unit tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - run: go vet ./...
+      - run: go test -v -race ./...
+
+  # This provider does not yet have terraform-plugin-testing acceptance
+  # tests against a live Graphiant API. When they're added, they should run
+  # here behind TF_ACC=1 with hashicorp/setup-terraform, gated on
+  # GRAPHIANT_ACCESS_TOKEN (or GRAPHIANT_USERNAME/GRAPHIANT_PASSWORD) secrets
+  # being configured, per CONTRIBUTING.md.

@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
 
@@ -69,16 +71,16 @@ func newClient(ctx context.Context, cfg providerConfig) (*gClient, error) {
 		return nil, fmt.Errorf("either access_token, or both username and password, must be set")
 	}
 
+	tflog.Debug(ctx, "authenticating with username/password", map[string]any{"username": cfg.Username})
+
 	authReq := graphiant.NewV1AuthLoginPostRequestWithDefaults()
 	authReq.SetUsername(cfg.Username)
 	authReq.SetPassword(cfg.Password)
 
 	resp, httpRes, err := api.DefaultAPI.V1AuthLoginPost(ctx).V1AuthLoginPostRequest(*authReq).Execute()
-	if httpRes != nil {
-		defer httpRes.Body.Close()
-	}
+	defer closeBody(httpRes)
 	if err != nil {
-		return nil, fmt.Errorf("login failed: %w", err)
+		return nil, fmt.Errorf("login failed: %s", apiErrorDetail(err))
 	}
 	if resp == nil || !resp.GetAuth() || resp.GetToken() == "" {
 		return nil, fmt.Errorf("login failed: no token returned")
