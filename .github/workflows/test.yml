@@ -10,6 +10,11 @@ on:
     paths-ignore:
       - 'README.md'
       - 'CHANGELOG.md'
+  schedule:
+    # Re-run acceptance tests nightly against a live tenant, independent of
+    # code changes, to catch drift in the Graphiant API itself.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -42,8 +47,40 @@ jobs:
       - run: go vet ./...
       - run: go test -v -race ./...
 
-  # This provider does not yet have terraform-plugin-testing acceptance
-  # tests against a live Graphiant API. When they're added, they should run
-  # here behind TF_ACC=1 with hashicorp/setup-terraform, gated on
-  # GRAPHIANT_ACCESS_TOKEN (or GRAPHIANT_USERNAME/GRAPHIANT_PASSWORD) secrets
-  # being configured, per CONTRIBUTING.md.
+  # Acceptance tests (internal/provider/*_test.go's TestAcc* functions) run
+  # real create/read/update/import/delete cycles against a live Graphiant
+  # tenant via terraform-plugin-testing. They always attempt to run so a
+  # missing/expired credential shows up as a clear failure below rather than
+  # a silently-skipped job, but each TestAcc* additionally self-skips (via
+  # testAccPreCheck) if credentials aren't configured at all — e.g. on a
+  # fork's pull_request run, which never receives repository secrets.
+  acceptance:
+    name: Acceptance tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Run acceptance tests
+        env:
+          TF_ACC: '1'
+          GRAPHIANT_HOST: ${{ secrets.GRAPHIANT_HOST || vars.GRAPHIANT_HOST || '' }}
+          GRAPHIANT_ACCESS_TOKEN: ${{ secrets.GRAPHIANT_ACCESS_TOKEN || '' }}
+          GRAPHIANT_USERNAME: ${{ secrets.GRAPHIANT_USERNAME || vars.GRAPHIANT_USERNAME || '' }}
+          GRAPHIANT_PASSWORD: ${{ secrets.GRAPHIANT_PASSWORD || '' }}
+        run: |
+          if [ -n "$GRAPHIANT_ACCESS_TOKEN" ] || { [ -n "$GRAPHIANT_USERNAME" ] && [ -n "$GRAPHIANT_PASSWORD" ]; }; then
+            echo "✅ GRAPHIANT credentials detected - running acceptance tests against a live tenant"
+          else
+            echo "ℹ️  No GRAPHIANT credentials configured - acceptance tests will self-skip"
+            echo "   Configure GRAPHIANT_ACCESS_TOKEN, or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD,"
+            echo "   as repository secrets/variables to exercise them in CI. See CONTRIBUTING.md."
+          fi
+          go test -v -timeout 25m ./...
