@@ -36,3 +36,29 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: make fmt-check
+
+  tfvalidate:
+    name: terraform fmt (examples/)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - run: terraform fmt -check -diff -recursive examples/
+
+  docs:
+    name: docs (tfplugindocs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - run: make docs-check
