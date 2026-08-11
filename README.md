@@ -5,6 +5,7 @@
 [![Terraform Plugin Framework](https://img.shields.io/badge/terraform--plugin--framework-1.19-844FBA.svg)](https://developer.hashicorp.com/terraform/plugin/framework)
 [![Tests](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/test.yml/badge.svg)](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/test.yml)
 [![Lint](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/lint.yml/badge.svg)](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/lint.yml)
+[![Docs](https://img.shields.io/badge/docs-docs%2F-844FBA.svg)](docs/index.md)
 
 A Terraform provider for [Graphiant Network-as-a-Service (NaaS)](https://www.graphiant.com),
 built on [`terraform-plugin-framework`](https://developer.hashicorp.com/terraform/plugin/framework)
@@ -26,7 +27,10 @@ More product context: [Graphiant Docs](https://docs.graphiant.com).
 | [Quick start](#quick-start) | Provider configuration and a first resource |
 | [Authentication](#authentication) | Access token vs. username/password |
 | [Resources & data sources](#resources--data-sources) | Full inventory |
-| [Local development](#local-development) | Build and test against a live tenant |
+| [Examples](#examples) | Ready-to-run `.tf` config per resource/data source |
+| [Full documentation](#full-documentation) | Generated attribute reference (`docs/`) |
+| [Testing](#testing) | Unit tests vs. acceptance tests against a live tenant |
+| [Local development](#local-development) | Build and use a local provider binary |
 | [Security](#security) | Credential handling |
 | [Contributing](#contributing) | PR workflow |
 | [License](#license) | MIT |
@@ -163,6 +167,93 @@ used against a trusted lab/on-prem controller — never in production. See
 
 Group membership is managed by setting `group_id` on `graphiant_user`; there
 is no separate group-membership resource yet.
+
+## Examples
+
+Every resource and data source has a runnable example under
+[`examples/`](examples/), laid out the way `terraform-plugin-docs` (and the
+Terraform Registry) expect:
+
+```
+examples/
+├── provider/provider.tf                       # provider configuration
+├── resources/graphiant_site/
+│   ├── resource.tf                             # minimal working config
+│   └── import.sh                               # terraform import example
+├── resources/graphiant_group/...
+├── resources/graphiant_user/...
+└── data-sources/graphiant_site/data-source.tf  # one per data source
+    data-sources/graphiant_sites/...
+    data-sources/graphiant_group/...
+    data-sources/graphiant_groups/...
+    data-sources/graphiant_user/...
+    data-sources/graphiant_users/...
+    data-sources/graphiant_device/...
+    data-sources/graphiant_devices/...
+```
+
+These are the same snippets embedded in [`docs/`](docs/) and on the Terraform
+Registry page once published — copy one directly into a `.tf` file to get
+started, or adapt the [Quick start](#quick-start) example above.
+
+## Full documentation
+
+Generated, per-attribute reference docs live in [`docs/`](docs/index.md):
+
+| Doc | Covers |
+|-----|--------|
+| [`docs/index.md`](docs/index.md) | Provider configuration schema |
+| [`docs/resources/`](docs/resources/) | `graphiant_site`, `graphiant_group`, `graphiant_user` — full schema + import syntax |
+| [`docs/data-sources/`](docs/data-sources/) | All eight data sources — full schema |
+
+These are generated from the resource/data-source `Description` strings in
+`internal/provider/*.go` and the examples in `examples/`, via
+[`tfplugindocs`](https://github.com/hashicorp/terraform-plugin-docs) — **don't
+hand-edit files under `docs/`**. After changing a schema description or an
+example, regenerate with:
+
+```bash
+make docs
+```
+
+CI (`docs` job in [lint.yml](.github/workflows/lint.yml)) fails a PR if
+`docs/` is out of sync with the schema and examples.
+
+## Testing
+
+This provider has two layers of tests, both under `internal/provider/`:
+
+- **Unit tests** (`go test ./...`, no credentials needed) — validate every
+  resource/data source's schema (`TestResourceSchemas`/
+  `TestDataSourceSchemas`) and any non-trivial `expand`/`flatten` conversion
+  logic. These run on every PR (`test` job in
+  [test.yml](.github/workflows/test.yml)).
+- **Acceptance tests** (`TestAcc*`, e.g. `TestAccSiteResource`) — exercise a
+  full create → read → update → import → delete cycle for each resource
+  against a **live Graphiant tenant**, using
+  [`terraform-plugin-testing`](https://developer.hashicorp.com/terraform/plugin/testing).
+  They're gated on `TF_ACC=1` (the upstream convention — without it,
+  `resource.Test` self-skips) *and* on Graphiant credentials being present
+  (`GRAPHIANT_ACCESS_TOKEN`, or `GRAPHIANT_USERNAME` + `GRAPHIANT_PASSWORD` —
+  the same variables the provider itself reads). Run them locally with:
+
+  ```bash
+  export GRAPHIANT_ACCESS_TOKEN="..."   # or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD
+  make testacc
+  ```
+
+  In CI, the `acceptance` job in [test.yml](.github/workflows/test.yml) runs
+  on every PR/push and nightly (`schedule` trigger), reading the same
+  variables from repository secrets/variables. **Acceptance tests create and
+  delete real sites/groups/users** (all named with an `acctest.RandomWithPrefix`
+  prefix like `tf-acc-site-...` so they're easy to spot and clean up if a run
+  is interrupted) — point `GRAPHIANT_API_HOST`/`GRAPHIANT_HOST` at a
+  non-production tenant if you have one. If no credentials are configured
+  (e.g. a fork's PR), the job still runs but every `TestAcc*` self-skips with
+  an explanation, so CI stays green.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md#testing) for how to add tests for a new
+resource or data source.
 
 ## Local development
 

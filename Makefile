@@ -1,4 +1,4 @@
-.PHONY: build test vet fmt fmt-check lint tidy install help
+.PHONY: build test testacc vet fmt fmt-check lint tidy install docs docs-check help
 
 ## build: Compile the provider binary
 build:
@@ -7,6 +7,11 @@ build:
 ## test: Run unit tests (schema validation, etc.)
 test:
 	go test -v -race ./...
+
+## testacc: Run acceptance tests against a live Graphiant tenant (requires
+## TF_ACC=1 and GRAPHIANT_ACCESS_TOKEN, or GRAPHIANT_USERNAME+GRAPHIANT_PASSWORD)
+testacc:
+	TF_ACC=1 go test -v -timeout 30m ./...
 
 ## vet: Run go vet
 vet:
@@ -37,6 +42,19 @@ tidy:
 ## install: Build and install the provider binary to GOBIN
 install:
 	go install .
+
+## docs: Regenerate docs/ from examples/ and schema descriptions (tfplugindocs)
+docs:
+	go tool tfplugindocs generate
+
+## docs-check: Fail if docs/ is out of date with examples/ and schema descriptions
+docs-check:
+	go tool tfplugindocs generate
+	@if [ -n "$$(git status --porcelain docs/)" ]; then \
+		echo "docs/ is out of date — run 'make docs' and commit the result:"; \
+		git status --porcelain docs/; \
+		exit 1; \
+	fi
 
 ## help: Show this help
 help:
