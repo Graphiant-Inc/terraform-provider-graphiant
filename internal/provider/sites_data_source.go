@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+
+	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/datasource_sites"
 )
 
 var (
@@ -30,18 +31,11 @@ func (d *sitesDataSource) Metadata(_ context.Context, req datasource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_sites"
 }
 
-func (d *sitesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Lists all Graphiant sites in the enterprise.",
-		Attributes: map[string]schema.Attribute{
-			"sites": schema.ListNestedAttribute{
-				Computed: true,
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: siteDataSourceAttributes(false),
-				},
-			},
-		},
-	}
+// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
+// data_sources.sites) via `make generate-schemas`.
+func (d *sitesDataSource) Schema(ctx context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = datasource_sites.SitesDataSourceSchema(ctx)
+	resp.Schema.Description = "Lists all Graphiant sites in the enterprise."
 }
 
 func (d *sitesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {

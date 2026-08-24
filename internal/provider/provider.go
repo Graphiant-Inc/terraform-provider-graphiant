@@ -101,6 +101,10 @@ func (p *GraphiantProvider) Resources(_ context.Context) []func() resource.Resou
 		NewSiteResource,
 		NewGroupResource,
 		NewUserResource,
+		NewSiteListResource,
+		NewContentFilterResource,
+		NewAppListResource,
+		NewCustomAppResource,
 	}
 }
 
@@ -114,6 +118,14 @@ func (p *GraphiantProvider) DataSources(_ context.Context) []func() datasource.D
 		NewUsersDataSource,
 		NewDeviceDataSource,
 		NewDevicesDataSource,
+		NewSiteListDataSource,
+		NewSiteListsDataSource,
+		NewContentFilterDataSource,
+		NewContentFiltersDataSource,
+		NewAppListDataSource,
+		NewAppListsDataSource,
+		NewCustomAppDataSource,
+		NewCustomAppsDataSource,
 	}
 }
 

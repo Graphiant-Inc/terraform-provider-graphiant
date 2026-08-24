@@ -25,6 +25,7 @@ output "user_emails" {
 
 ### Read-Only
 
+- `id` (String) The ID of this resource.
 - `users` (Attributes List) (see [below for nested schema](#nestedatt--users))
 
 <a id="nestedatt--users"></a>
@@ -32,13 +33,13 @@ output "user_emails" {
 
 Read-Only:
 
-- `email` (String) User email address.
-- `enterprise_id` (Number) Enterprise the user belongs to.
-- `first_name` (String) User's first name.
+- `email` (String)
+- `enterprise_id` (Number)
+- `first_name` (String)
 - `id` (String) User identifier. Equal to the user's email address.
-- `last_active_at` (String) Timestamp of the user's last activity (RFC3339, UTC).
-- `last_name` (String) User's last name.
-- `mfa_factor` (String) The user's configured MFA factor, if any.
-- `phone_number` (String) User's phone number.
-- `time_zone` (String) User's time zone.
-- `verified` (Boolean) Whether the user has verified their email address.
+- `last_active_at` (String)
+- `last_name` (String)
+- `mfa_factor` (String)
+- `phone_number` (String)
+- `time_zone` (String)
+- `verified` (Boolean)

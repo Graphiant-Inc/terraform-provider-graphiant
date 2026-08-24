@@ -35,8 +35,8 @@ resource "graphiant_group" "network_admins" {
 
 ### Optional
 
+- `group_id` (String) External group ID. Only supply this if the enterprise uses an identity provider (IdP) for group management.
 - `group_type` (String) Group type (e.g. "custom").
-- `idp_group_id` (String) External group ID. Only supply this if the enterprise uses an identity provider (IdP) for group management.
 - `manages_enterprises` (Boolean) Whether members of this group can manage sub-enterprises. Can only be set at creation.
 - `permissions` (Attributes) Per-area role permissions. (see [below for nested schema](#nestedatt--permissions))
 - `time_window_end` (Number) Unix timestamp for the end of the access time window. Must be set together with time_window_start.
@@ -52,25 +52,25 @@ resource "graphiant_group" "network_admins" {
 
 Optional:
 
-- `asset_manager` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `asset_manager` (String)
 - `b2b` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `b2b_security_profile_external` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `billing_and_invoicing` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `b2b_security_profile_external` (String)
+- `billing_and_invoicing` (String)
 - `compliance` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `developer_tools` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `developer_tools` (String)
 - `gateway` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `global_services` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `global_services` (String)
 - `insights` (String) Access level for this permission area (e.g. "none", "read", "write").
 - `licensing` (String) Access level for this permission area (e.g. "none", "read", "write").
 - `logs` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `monitoring_and_troubleshooting` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `network_configuration` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `order_status` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `monitoring_and_troubleshooting` (String)
+- `network_configuration` (String)
+- `order_status` (String)
 - `reports` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `safety_and_security` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `service_policies` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `safety_and_security` (String)
+- `service_policies` (String)
 - `support` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `user_and_tenant_management` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `user_and_tenant_management` (String)
 
 ## Import
 
