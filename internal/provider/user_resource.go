@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
+	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/resource_user"
 )
 
 var (
@@ -60,93 +61,95 @@ func (r *userResource) Metadata(_ context.Context, req resource.MetadataRequest,
 	resp.TypeName = req.ProviderTypeName + "_user"
 }
 
-func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages a Graphiant IAM user.",
-		Attributes: map[string]schema.Attribute{
-			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "User identifier. Equal to the user's email address.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"email": schema.StringAttribute{
-				Required:    true,
-				Description: "User email address. Identifies the user and cannot be changed after creation.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-				Validators: []validator.String{
-					stringvalidator.RegexMatches(emailRegexp, "must look like an email address"),
-				},
-			},
-			"first_name": schema.StringAttribute{
-				Required:    true,
-				Description: "User's first name.",
-				Validators: []validator.String{
-					stringvalidator.LengthAtLeast(1),
-				},
-			},
-			"last_name": schema.StringAttribute{
-				Required:    true,
-				Description: "User's last name.",
-				Validators: []validator.String{
-					stringvalidator.LengthAtLeast(1),
-				},
-			},
-			"group_id": schema.StringAttribute{
-				Optional:    true,
-				Description: "ID of the IAM group this user is assigned to.",
-			},
-			"time_zone": schema.StringAttribute{
-				Optional:    true,
-				Computed:    true,
-				Description: "User's time zone (e.g. \"America/Los_Angeles\").",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			// enterprise_id/verified/mfa_factor/phone_number/last_active_at
-			// are all server-derived and aren't touched by this resource's
-			// Update (which only sends first/last name, group, and time
-			// zone), so UseStateForUnknown keeps them out of the plan diff
-			// when nothing relevant changed.
-			"enterprise_id": schema.Int64Attribute{
-				Computed:    true,
-				Description: "Enterprise the user belongs to.",
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
-				},
-			},
-			"verified": schema.BoolAttribute{
-				Computed:    true,
-				Description: "Whether the user has verified their email address.",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"mfa_factor": schema.StringAttribute{
-				Computed:    true,
-				Description: "The user's configured MFA factor, if any.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"phone_number": schema.StringAttribute{
-				Computed:    true,
-				Description: "User's phone number.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"last_active_at": schema.StringAttribute{
-				Computed:    true,
-				Description: "Timestamp of the user's last activity (RFC3339, UTC).",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
+// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
+// resources.user) via `make generate-schemas`; the API has no separate user
+// ID field (email is aliased directly onto it), so "id" is appended by hand
+// as a plain mirror of "email" to match every other resource's convention
+// of a distinct, importable "id" attribute.
+func (r *userResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = resource_user.UserResourceSchema(ctx)
+	resp.Schema.Description = "Manages a Graphiant IAM user."
+	resp.Schema.Attributes["id"] = schema.StringAttribute{
+		Computed:    true,
+		Description: "User identifier. Equal to the user's email address.",
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.UseStateForUnknown(),
+		},
+	}
+	resp.Schema.Attributes["email"] = schema.StringAttribute{
+		Required:    true,
+		Description: "User email address. Identifies the user and cannot be changed after creation.",
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.RequiresReplace(),
+		},
+		Validators: []validator.String{
+			stringvalidator.RegexMatches(emailRegexp, "must look like an email address"),
+		},
+	}
+	resp.Schema.Attributes["first_name"] = schema.StringAttribute{
+		Required:    true,
+		Description: "User's first name.",
+		Validators: []validator.String{
+			stringvalidator.LengthAtLeast(1),
+		},
+	}
+	resp.Schema.Attributes["last_name"] = schema.StringAttribute{
+		Required:    true,
+		Description: "User's last name.",
+		Validators: []validator.String{
+			stringvalidator.LengthAtLeast(1),
+		},
+	}
+	resp.Schema.Attributes["group_id"] = schema.StringAttribute{
+		Optional:    true,
+		Description: "ID of the IAM group this user is assigned to.",
+	}
+	resp.Schema.Attributes["time_zone"] = schema.StringAttribute{
+		Optional:    true,
+		Computed:    true,
+		Description: "User's time zone (e.g. \"America/Los_Angeles\").",
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.UseStateForUnknown(),
+		},
+	}
+	// enterprise_id/verified/mfa_factor/phone_number/last_active_at are all
+	// server-derived and aren't touched by this resource's Update (which
+	// only sends first/last name, group, and time zone), so
+	// UseStateForUnknown keeps them out of the plan diff when nothing
+	// relevant changed.
+	resp.Schema.Attributes["enterprise_id"] = schema.Int64Attribute{
+		Computed:    true,
+		Description: "Enterprise the user belongs to.",
+		PlanModifiers: []planmodifier.Int64{
+			int64planmodifier.UseStateForUnknown(),
+		},
+	}
+	resp.Schema.Attributes["verified"] = schema.BoolAttribute{
+		Computed:    true,
+		Description: "Whether the user has verified their email address.",
+		PlanModifiers: []planmodifier.Bool{
+			boolplanmodifier.UseStateForUnknown(),
+		},
+	}
+	resp.Schema.Attributes["mfa_factor"] = schema.StringAttribute{
+		Computed:    true,
+		Description: "The user's configured MFA factor, if any.",
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.UseStateForUnknown(),
+		},
+	}
+	resp.Schema.Attributes["phone_number"] = schema.StringAttribute{
+		Computed:    true,
+		Description: "User's phone number.",
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.UseStateForUnknown(),
+		},
+	}
+	resp.Schema.Attributes["last_active_at"] = schema.StringAttribute{
+		Computed:    true,
+		Description: "Timestamp of the user's last activity (RFC3339, UTC).",
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.UseStateForUnknown(),
 		},
 	}
 }

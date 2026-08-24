@@ -14,6 +14,11 @@ NOTES:
 
 * provider: Initial development release. No compatibility guarantees apply
   until a `v1.0.0` (or first tagged) release is cut.
+* provider: This provider intentionally covers a subset of the Graphiant API
+  — resources are only added for endpoints that support full create/read/
+  delete lifecycle management (declarative infrastructure), not for actions,
+  analytics/telemetry queries, or session/account management. See
+  CONTRIBUTING.md for the full API-surface audit behind this scoping.
 
 FEATURES:
 
@@ -40,6 +45,30 @@ FEATURES:
   onboarded device by id.
 * data-source/graphiant_devices: New read-only data source to list all
   onboarded devices.
+* resource/graphiant_site_list: New resource for managing global site lists
+  (name, description, member sites/route tags). The API has no rename
+  endpoint, so `name` requires replacement.
+* resource/graphiant_content_filter: New resource for managing global
+  content filters (domain-category blocking rules scoped to LANs/sites).
+* resource/graphiant_app_list: New resource for managing global app lists
+  (reusable groups of apps referenced by policies).
+* resource/graphiant_custom_app: New resource for managing custom apps
+  (user-defined app matches by URL, IP, and/or port).
+* data-source/graphiant_site_list: New data source to look up a single global
+  site list by id, including its member entries.
+* data-source/graphiant_site_lists: New data source to list all global site
+  lists (summary only; use graphiant_site_list for member entries).
+* data-source/graphiant_content_filter: New data source to look up a single
+  global content filter by id, with its full ID-based config.
+* data-source/graphiant_content_filters: New data source to list all global
+  content filters, resolved to display names.
+* data-source/graphiant_app_list: New data source to look up a single global
+  app list by id, including its member apps.
+* data-source/graphiant_app_lists: New data source to list all global app
+  lists (summary only; use graphiant_app_list for member apps).
+* data-source/graphiant_custom_app: New data source to look up a single
+  custom app by id.
+* data-source/graphiant_custom_apps: New data source to list all custom apps.
 
 IMPROVEMENTS:
 

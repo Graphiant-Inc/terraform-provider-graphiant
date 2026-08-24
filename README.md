@@ -57,6 +57,18 @@ More product context: [Graphiant Docs](https://docs.graphiant.com).
 - **Devices (read-only)** — `graphiant_device`/`graphiant_devices` data
   sources for onboarded edge devices. This provider does not manage device
   network configuration.
+- **Global site lists** — reusable groups of sites or route tags
+  (`graphiant_site_list`), plus `graphiant_site_list`/`graphiant_site_lists`
+  data sources.
+- **Global content filters** — domain-category blocking rules scoped to
+  sites/LANs (`graphiant_content_filter`), plus
+  `graphiant_content_filter`/`graphiant_content_filters` data sources.
+- **Global app lists** — reusable groups of apps for policies
+  (`graphiant_app_list`), plus `graphiant_app_list`/`graphiant_app_lists`
+  data sources.
+- **Custom apps** — user-defined app matches by URL/IP/port
+  (`graphiant_custom_app`), plus `graphiant_custom_app`/`graphiant_custom_apps`
+  data sources.
 - **Flexible auth** — a static bearer token or a username/password pair,
   configurable via the provider block or environment variables.
 
@@ -156,6 +168,10 @@ used against a trusted lab/on-prem controller — never in production. See
 | Resource | `graphiant_site` | Create/update/delete sites |
 | Resource | `graphiant_group` | Create/update/delete IAM groups and their permissions |
 | Resource | `graphiant_user` | Create/update/delete IAM users |
+| Resource | `graphiant_site_list` | Create/update/delete global site lists |
+| Resource | `graphiant_content_filter` | Create/update/delete global content filters |
+| Resource | `graphiant_app_list` | Create/update/delete global app lists |
+| Resource | `graphiant_custom_app` | Create/update/delete custom apps |
 | Data source | `graphiant_site` | Look up one site by `id` |
 | Data source | `graphiant_sites` | List all sites |
 | Data source | `graphiant_group` | Look up one IAM group by `id` |
@@ -164,9 +180,23 @@ used against a trusted lab/on-prem controller — never in production. See
 | Data source | `graphiant_users` | List all users |
 | Data source | `graphiant_device` | Look up one onboarded device by `id` (read-only) |
 | Data source | `graphiant_devices` | List all onboarded devices (read-only) |
+| Data source | `graphiant_site_list` | Look up one global site list by `id`, including its member entries |
+| Data source | `graphiant_site_lists` | List all global site lists (summary only; no member entries) |
+| Data source | `graphiant_content_filter` | Look up one global content filter by `id`, ID-based config |
+| Data source | `graphiant_content_filters` | List all global content filters, resolved to display names |
+| Data source | `graphiant_app_list` | Look up one global app list by `id`, including its member apps |
+| Data source | `graphiant_app_lists` | List all global app lists (summary only; no member apps) |
+| Data source | `graphiant_custom_app` | Look up one custom app by `id` |
+| Data source | `graphiant_custom_apps` | List all custom apps |
 
 Group membership is managed by setting `group_id` on `graphiant_user`; there
 is no separate group-membership resource yet.
+
+Several of the global resources above are billed as full objects on their
+singular data source/resource but as summaries on their plural (list) data
+source — see each resource's doc comment in `internal/provider/` for why
+(the underlying API splits full detail from list-endpoint summaries
+differently per resource).
 
 ## Examples
 

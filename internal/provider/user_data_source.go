@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
+	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/datasource_user"
 )
 
 var (
@@ -38,25 +39,6 @@ type userDataSourceModel struct {
 	LastActiveAt types.String `tfsdk:"last_active_at"`
 }
 
-func userDataSourceAttributes(idRequired bool) map[string]schema.Attribute {
-	return map[string]schema.Attribute{
-		"id": schema.StringAttribute{
-			Required:    idRequired,
-			Computed:    !idRequired,
-			Description: "User identifier. Equal to the user's email address.",
-		},
-		"email":          schema.StringAttribute{Computed: true, Description: "User email address."},
-		"first_name":     schema.StringAttribute{Computed: true, Description: "User's first name."},
-		"last_name":      schema.StringAttribute{Computed: true, Description: "User's last name."},
-		"time_zone":      schema.StringAttribute{Computed: true, Description: "User's time zone."},
-		"enterprise_id":  schema.Int64Attribute{Computed: true, Description: "Enterprise the user belongs to."},
-		"verified":       schema.BoolAttribute{Computed: true, Description: "Whether the user has verified their email address."},
-		"mfa_factor":     schema.StringAttribute{Computed: true, Description: "The user's configured MFA factor, if any."},
-		"phone_number":   schema.StringAttribute{Computed: true, Description: "User's phone number."},
-		"last_active_at": schema.StringAttribute{Computed: true, Description: "Timestamp of the user's last activity (RFC3339, UTC)."},
-	}
-}
-
 func flattenUserDataSource(u *graphiant.CommonUser, m *userDataSourceModel) {
 	m.Id = strValue(u.UserId)
 	if u.UserId == nil {
@@ -77,11 +59,14 @@ func (d *userDataSource) Metadata(_ context.Context, req datasource.MetadataRequ
 	resp.TypeName = req.ProviderTypeName + "_user"
 }
 
-func (d *userDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Looks up a single Graphiant user by ID (email).",
-		Attributes:  userDataSourceAttributes(true),
-	}
+// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
+// data_sources.user) via `make generate-schemas`; "id" is appended by hand
+// as a plain mirror of "email" for the same reason as the resource (see
+// user_resource.go).
+func (d *userDataSource) Schema(ctx context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = datasource_user.UserDataSourceSchema(ctx)
+	resp.Schema.Description = "Looks up a single Graphiant user by ID (email)."
+	resp.Schema.Attributes["id"] = schema.StringAttribute{Required: true, Description: "User identifier. Equal to the user's email address."}
 }
 
 func (d *userDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
