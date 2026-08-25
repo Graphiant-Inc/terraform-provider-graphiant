@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+
+	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/datasource_groups"
 )
 
 var (
@@ -30,18 +31,11 @@ func (d *groupsDataSource) Metadata(_ context.Context, req datasource.MetadataRe
 	resp.TypeName = req.ProviderTypeName + "_groups"
 }
 
-func (d *groupsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Lists all Graphiant IAM groups in the enterprise.",
-		Attributes: map[string]schema.Attribute{
-			"groups": schema.ListNestedAttribute{
-				Computed: true,
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: groupDataSourceAttributes(false),
-				},
-			},
-		},
-	}
+// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
+// data_sources.groups) via `make generate-schemas`.
+func (d *groupsDataSource) Schema(ctx context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = datasource_groups.GroupsDataSourceSchema(ctx)
+	resp.Schema.Description = "Lists all Graphiant IAM groups in the enterprise."
 }
 
 func (d *groupsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {

@@ -2,7 +2,6 @@ package provider
 
 import (
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -29,47 +28,6 @@ type permissionsModel struct {
 	ServicePolicies              types.String `tfsdk:"service_policies"`
 	Support                      types.String `tfsdk:"support"`
 	UserAndTenantManagement      types.String `tfsdk:"user_and_tenant_management"`
-}
-
-// permissionsFields lists the tfsdk attribute names for every permission,
-// used to build the schema without repeating each attribute by hand.
-var permissionsFields = []string{
-	"asset_manager",
-	"b2b",
-	"b2b_security_profile_external",
-	"billing_and_invoicing",
-	"compliance",
-	"developer_tools",
-	"gateway",
-	"global_services",
-	"insights",
-	"licensing",
-	"logs",
-	"monitoring_and_troubleshooting",
-	"network_configuration",
-	"order_status",
-	"reports",
-	"safety_and_security",
-	"service_policies",
-	"support",
-	"user_and_tenant_management",
-}
-
-func permissionsSchemaAttribute(computed bool) schema.SingleNestedAttribute {
-	attrs := make(map[string]schema.Attribute, len(permissionsFields))
-	for _, name := range permissionsFields {
-		attrs[name] = schema.StringAttribute{
-			Optional:    !computed,
-			Computed:    computed,
-			Description: "Access level for this permission area (e.g. \"none\", \"read\", \"write\").",
-		}
-	}
-	return schema.SingleNestedAttribute{
-		Optional:    !computed,
-		Computed:    computed,
-		Attributes:  attrs,
-		Description: "Per-area role permissions.",
-	}
 }
 
 func expandPermissions(m *permissionsModel) *graphiant.CommonPermissions {

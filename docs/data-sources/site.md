@@ -32,16 +32,16 @@ output "hq_edge_count" {
 ### Read-Only
 
 - `address` (String) Resolved postal address for the site location.
-- `created_at` (String) Creation timestamp (RFC3339, UTC).
-- `edge_count` (Number) Number of edge devices onboarded at this site.
+- `created_at` (String)
+- `edge_count` (Number)
 - `location` (Attributes) (see [below for nested schema](#nestedatt--location))
 - `name` (String) Site name.
 - `notes` (String) Free-form notes about the site.
-- `policy_reference_count` (Number) Number of policies referencing this site.
-- `segment_count` (Number) Number of LAN segments configured at this site.
-- `site_list_reference_count` (Number) Number of site lists referencing this site.
+- `policy_reference_count` (Number)
+- `segment_count` (Number)
+- `site_list_reference_count` (Number)
 - `tags` (List of String) Tags applied to the site.
-- `updated_at` (String) Last update timestamp (RFC3339, UTC).
+- `updated_at` (String)
 
 <a id="nestedatt--location"></a>
 ### Nested Schema for `location`

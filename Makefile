@@ -1,4 +1,4 @@
-.PHONY: build test testacc vet fmt fmt-check lint tidy install docs docs-check help
+.PHONY: build test testacc vet fmt fmt-check lint tidy install generate-schemas docs docs-check help
 
 ## build: Compile the provider binary
 build:
@@ -42,6 +42,10 @@ tidy:
 ## install: Build and install the provider binary to GOBIN
 install:
 	go install .
+
+## generate-schemas: Regenerate internal/provider/generated/** from api/graphiant_api_docs_v26.7.0.json
+generate-schemas:
+	api/generate.sh
 
 ## docs: Regenerate docs/ from examples/ and schema descriptions (tfplugindocs)
 docs:

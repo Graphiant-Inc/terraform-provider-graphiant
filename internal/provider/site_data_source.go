@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
+	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/datasource_site"
 )
 
 var (
@@ -41,50 +42,6 @@ type siteDataSourceModel struct {
 	UpdatedAt              types.String   `tfsdk:"updated_at"`
 }
 
-func siteDataSourceAttributes(idRequired bool) map[string]schema.Attribute {
-	return map[string]schema.Attribute{
-		"id": schema.Int64Attribute{
-			Required:    idRequired,
-			Computed:    !idRequired,
-			Description: "Site identifier.",
-		},
-		"name":                      schema.StringAttribute{Computed: true, Description: "Site name."},
-		"notes":                     schema.StringAttribute{Computed: true, Description: "Free-form notes about the site."},
-		"location":                  locationDataSourceAttribute(),
-		"address":                   schema.StringAttribute{Computed: true, Description: "Resolved postal address for the site location."},
-		"edge_count":                schema.Int64Attribute{Computed: true, Description: "Number of edge devices onboarded at this site."},
-		"segment_count":             schema.Int64Attribute{Computed: true, Description: "Number of LAN segments configured at this site."},
-		"policy_reference_count":    schema.Int64Attribute{Computed: true, Description: "Number of policies referencing this site."},
-		"site_list_reference_count": schema.Int64Attribute{Computed: true, Description: "Number of site lists referencing this site."},
-		"tags": schema.ListAttribute{
-			Computed:    true,
-			ElementType: types.StringType,
-			Description: "Tags applied to the site.",
-		},
-		"created_at": schema.StringAttribute{Computed: true, Description: "Creation timestamp (RFC3339, UTC)."},
-		"updated_at": schema.StringAttribute{Computed: true, Description: "Last update timestamp (RFC3339, UTC)."},
-	}
-}
-
-func locationDataSourceAttribute() schema.SingleNestedAttribute {
-	return schema.SingleNestedAttribute{
-		Computed: true,
-		Attributes: map[string]schema.Attribute{
-			"address_line1": schema.StringAttribute{Computed: true},
-			"address_line2": schema.StringAttribute{Computed: true},
-			"city":          schema.StringAttribute{Computed: true},
-			"state":         schema.StringAttribute{Computed: true},
-			"state_code":    schema.StringAttribute{Computed: true},
-			"province_code": schema.StringAttribute{Computed: true},
-			"country":       schema.StringAttribute{Computed: true},
-			"country_code":  schema.StringAttribute{Computed: true},
-			"latitude":      schema.Float64Attribute{Computed: true},
-			"longitude":     schema.Float64Attribute{Computed: true},
-			"notes":         schema.StringAttribute{Computed: true},
-		},
-	}
-}
-
 func flattenSiteDataSource(ctx context.Context, site *graphiant.ManaV2Site, m *siteDataSourceModel) diag.Diagnostics {
 	var diags diag.Diagnostics
 	m.Id = int64Value(site.Id)
@@ -109,11 +66,12 @@ func (d *siteDataSource) Metadata(_ context.Context, req datasource.MetadataRequ
 	resp.TypeName = req.ProviderTypeName + "_site"
 }
 
-func (d *siteDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Looks up a single Graphiant site by ID.",
-		Attributes:  siteDataSourceAttributes(true),
-	}
+// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
+// data_sources.site) via `make generate-schemas`.
+func (d *siteDataSource) Schema(ctx context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = datasource_site.SiteDataSourceSchema(ctx)
+	resp.Schema.Description = "Looks up a single Graphiant site by ID."
+	resp.Schema.Attributes["id"] = schema.Int64Attribute{Required: true, Description: "Site identifier."}
 }
 
 func (d *siteDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
