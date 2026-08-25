@@ -51,11 +51,16 @@ Thank you for your interest in contributing!
 - `internal/provider/client.go` — wraps `graphiant-sdk-go`'s `*APIClient`
   together with the resolved bearer token (`gClient`)
 - `internal/provider/*_resource.go` — one file per managed resource
-  (`site`, `group`, `user`)
+  (`site`, `group`, `user`, `site_list`, `content_filter`, `app_list`,
+  `custom_app`)
 - `internal/provider/*_data_source.go` — one file per data source
   (singular = lookup by ID, plural = list all)
 - `internal/provider/util.go`, `location.go`, `permissions.go` — shared
-  conversion helpers and nested-attribute schemas reused across resources
+  conversion helpers reused across resources
+- `internal/provider/generated/` — schemas and model structs generated from
+  `api/graphiant_api_docs_v26.7.0.json` via `make generate-schemas`
+  (**do not hand-edit**, headed `DO NOT EDIT`); see
+  [Adding a New Resource or Data Source](#adding-a-new-resource-or-data-source)
 - `internal/provider/acctest_test.go` — shared acceptance-test helpers
   (`testAccProtoV6ProviderFactories`, `testAccPreCheck`)
 - `internal/provider/*_test.go` (`TestAcc*` functions) — acceptance tests
@@ -65,38 +70,122 @@ Thank you for your interest in contributing!
 - `docs/` — generated attribute reference; **do not hand-edit**, run
   `make docs` instead (see [Documentation](#documentation) below)
 
+## API Coverage
+
+`graphiant-sdk-go` exposes roughly 525 endpoints; this provider deliberately
+covers a subset of them. A resource is only added for an endpoint (or small
+group of endpoints) that supports full create/read/delete — ideally
+create/read/update/delete — lifecycle management of a persistent object.
+Endpoints that are actions (e.g. resetting an IPsec session, approving a
+device return), analytics/telemetry queries (bandwidth trackers, top
+talkers, flow reports), session/account self-service (login, MFA, SAML,
+password), or things like AI assistant conversations and audit/activity logs
+are **not** modeled as resources — forcing them into Terraform's
+create/read/update/delete resource model produces broken or misleading
+resources (e.g. a "resource" with no real update or delete semantics). This
+follows HashiCorp's own
+[provider design principles](https://developer.hashicorp.com/terraform/plugin/best-practices/hashicorp-provider-design-principles)
+("single API object per resource") and its guidance that ephemeral resources
+and provider functions — not resources — exist for things that aren't
+long-lived state.
+
+**Covered today:**
+
+- IAM: `graphiant_site`, `graphiant_group`, `graphiant_user`
+- Devices: read-only (`graphiant_device`/`graphiant_devices`) — this
+  provider does not manage device network configuration
+- Global catalog objects: `graphiant_site_list`, `graphiant_content_filter`,
+  `graphiant_app_list`, `graphiant_custom_app`
+
+**Confirmed full-CRUD candidates not yet implemented** (verified against the
+SDK's actual request/response models, not just endpoint names — see git
+history/PR discussion for the audit): `pvif` (physical/virtual interfaces)
+and `gateways` (note: gateway update/delete take the id in the request body
+rather than the URL path — a shape worth designing carefully). Larger,
+multi-object domains needing more design work before implementation:
+`extranets`/`extranet/b2b/*` (a multi-object B2B workflow: customers,
+consumers, producers, matches) and `enterprises`/`enterprise` (multi-tenant
+admin). Device network configuration (interfaces, circuits, routing) is
+configured via a single monolithic `PUT /v1/devices/{deviceId}/config`
+rather than per-object endpoints, which changes the resource design
+significantly and needs that request body's model read in full before any
+schema is designed.
+
+**Ruled out** (endpoint exists but doesn't support full CRUD in the current
+API — e.g. create-only with no way to read back or delete): global
+`prefix-sets`, `routing-policies`, `traffic-policies`, `ntps`, `snmps`,
+`syslogs`, `ipfix` (all POST-only); `ipsec-profile` (GET-only, a data-source
+candidate at most if ever needed).
+
+When proposing a new resource, check the actual generated model structs
+(`model_*.go` in `graphiant-sdk-go`) for the relevant endpoints before
+assuming an endpoint is CRUD-capable — endpoint *names* are not a reliable
+signal (see `pvif`/`gateways` above for confirmed-good shapes vs. the
+POST-only domains above that look like resources but aren't).
+
 ## Adding a New Resource or Data Source
 
-This provider is a hand-written wrapper around
-[`graphiant-sdk-go`](https://github.com/Graphiant-Inc/graphiant-sdk-go), not
-generated code. When adding a new resource or data source:
+Schemas and model structs are **generated from the OpenAPI spec**
+(`api/graphiant_api_docs_v26.7.0.json`) via `make generate-schemas`
+(`api/generate.sh`) — see `api/generator_config.yml` for the path/method
+mapping per resource/data source. Everything under
+`internal/provider/generated/` is regenerated output; don't hand-edit it.
+CRUD logic still hand-calls `graphiant-sdk-go` directly (the generator
+doesn't produce a client or any Create/Read/Update/Delete code at all, only
+schema + model types) — see `internal/provider/*_resource.go` for the
+pattern. When adding a new resource or data source:
 
-1. Check `graphiant-sdk-go`'s `docs/DefaultAPI.md` for the relevant endpoints
-   and `docs/<Model>.md` for the request/response shapes. Note that despite
-   what the generated docs say, list-typed model fields (`[]string`,
-   `[]int64`, ...) are **not** pointers in the actual generated structs —
-   only scalar fields are; verify against `model_*.go` if in doubt.
-2. Follow the existing pattern: a `tfsdk`-tagged model struct, a `Schema()`
-   method, and `expand*`/`flatten*` helpers converting between
-   `types.X` and the SDK struct (see `util.go` for the shared helpers).
-3. If the API has no get-by-id endpoint, follow `findSite`/`findGroup`'s
+1. Add its `create`/`read`/`update`/`delete` (or `read`-only, for a data
+   source) path/method mapping to `api/generator_config.yml`. If the
+   request/response body wraps the real fields in an envelope object, or the
+   endpoint has no genuine single-object read (see `api/augment_spec.py`'s
+   module docstring for why this comes up and how it's handled), extend
+   `api/augment_spec.py` rather than fighting the generator — it produces a
+   codegen-only derived spec used solely as generator input.
+2. Run `make generate-schemas`. Diff the result — this toolchain has known
+   rough edges (see comments in `api/patch_ir.py` and
+   `api/dedupe_generated.py`), so treat a clean run as something to verify,
+   not assume. In particular: `generator_config.yml` can't express plan
+   modifiers, `RequiresReplace`, or computed/optional overrides — add those
+   to `api/patch_ir.py` instead, which hand-patches the intermediate
+   representation between the OpenAPI→IR and IR→Go steps.
+3. Write the resource/data source Go file: a `Schema()` that calls into the
+   generated package and layers any hand-patched attributes (server-derived
+   counters not present in the generated response, plan modifiers/validators
+   not expressible via config) on top — see `app_list_resource.go` for the
+   reference pattern — plus `Create`/`Read`/`Update`/`Delete` calling
+   `graphiant-sdk-go` as normal. The framework's struct reflection works off
+   the raw `tftypes` value, so a plain `tfsdk`-tagged model struct works
+   fine as the destination regardless of the generated schema's `CustomType`
+   wrapper — you don't need the generated nested-object value types unless
+   you want their typed accessors.
+4. If the API has no get-by-id endpoint, follow `findSite`/`findGroup`'s
    pattern of listing and filtering client-side in `Read`.
-4. If a write endpoint doesn't return the created/updated object (as with
+5. If a write endpoint doesn't return the created/updated object (as with
    `V1GroupsPut`/`V1UsersPut`), read it back afterward as `Create`/`Update`
    already do for groups and users.
-5. Register the new `New*Resource`/`New*DataSource` constructor in
+6. Register the new `New*Resource`/`New*DataSource` constructor in
    `provider.go`'s `Resources()`/`DataSources()`.
-6. `TestResourceSchemas`/`TestDataSourceSchemas` iterate the registries in
+7. `TestResourceSchemas`/`TestDataSourceSchemas` iterate the registries in
    `provider.go`, so the new resource/data source is covered automatically —
    no changes needed there. Do add dedicated tests if its expand/flatten
    logic is non-trivial.
-7. Add an acceptance test (see [Acceptance tests](#acceptance-tests) below)
+8. Add an acceptance test (see [Acceptance tests](#acceptance-tests) below)
    and an example config:
    - Resource: `examples/resources/graphiant_<name>/resource.tf`, plus
      `import.sh` if it implements `ResourceWithImportState`.
    - Data source: `examples/data-sources/graphiant_<name>/data-source.tf`.
-8. Run `make docs` to regenerate `docs/` from the new schema and example —
+9. Run `make docs` to regenerate `docs/` from the new schema and example —
    CI's `docs` job (`lint.yml`) fails the PR otherwise.
+
+Exception: `graphiant_device`/`graphiant_devices` are hand-written, not
+generated — the real API schema for a device is a ~45-field, deeply-nested
+object that reuses attribute names (e.g. `rules`, `bgp`) at different
+nesting depths, which hits an unresolved upstream bug where
+`tfplugingen-framework` emits colliding duplicate Go types for them (see
+`api/generator_config.yml`'s comment for links). Don't attempt to bring
+these into codegen without checking whether that upstream issue has been
+fixed.
 
 ## Testing
 
@@ -115,6 +204,8 @@ helper that does non-trivial conversion.
 
 `internal/provider/*_test.go` has `terraform-plugin-testing`-based acceptance
 tests (`TestAccSiteResource`, `TestAccGroupResource`, `TestAccUserResource`,
+`TestAccSiteListResource`, `TestAccContentFilterResource`,
+`TestAccAppListResource`, `TestAccCustomAppResource`,
 `TestAccDevicesDataSource`) that exercise a live Graphiant API: full
 create → read → update → import cycles for each resource, plus their
 associated data sources. They're gated the same way

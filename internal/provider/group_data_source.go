@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
+	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/datasource_group"
 )
 
 var (
@@ -26,53 +27,19 @@ type groupDataSource struct {
 	client *gClient
 }
 
+// groupDataSourceModel matches datasource_group.GroupDataSourceSchema's
+// attributes (generated from the OpenAPI spec). Unlike the resource,
+// manages_enterprises isn't included here: iamGroup (the real GET /v1/groups
+// response) never returns it, so it was previously declared but always null.
 type groupDataSourceModel struct {
-	Id                 types.String      `tfsdk:"id"`
-	Name               types.String      `tfsdk:"name"`
-	Description        types.String      `tfsdk:"description"`
-	GroupType          types.String      `tfsdk:"group_type"`
-	ManagesEnterprises types.Bool        `tfsdk:"manages_enterprises"`
-	TimeWindowStart    types.Int64       `tfsdk:"time_window_start"`
-	TimeWindowEnd      types.Int64       `tfsdk:"time_window_end"`
-	Permissions        *permissionsModel `tfsdk:"permissions"`
-	EnterpriseIds      types.List        `tfsdk:"enterprise_ids"`
-}
-
-func groupDataSourceAttributes(idRequired bool) map[string]schema.Attribute {
-	return map[string]schema.Attribute{
-		"id": schema.StringAttribute{
-			Required:    idRequired,
-			Computed:    !idRequired,
-			Description: "Group identifier.",
-		},
-		"name":                schema.StringAttribute{Computed: true, Description: "Group name."},
-		"description":         schema.StringAttribute{Computed: true, Description: "Group description."},
-		"group_type":          schema.StringAttribute{Computed: true, Description: "Group type."},
-		"manages_enterprises": schema.BoolAttribute{Computed: true, Description: "Whether members of this group can manage sub-enterprises."},
-		"time_window_start":   schema.Int64Attribute{Computed: true, Description: "Unix timestamp for the start of the access time window, if the group is time-restricted."},
-		"time_window_end":     schema.Int64Attribute{Computed: true, Description: "Unix timestamp for the end of the access time window, if the group is time-restricted."},
-		"permissions":         permissionsDataSourceAttribute(),
-		"enterprise_ids": schema.ListAttribute{
-			Computed:    true,
-			ElementType: types.Int64Type,
-			Description: "Enterprises this group has access to.",
-		},
-	}
-}
-
-func permissionsDataSourceAttribute() schema.SingleNestedAttribute {
-	attrs := make(map[string]schema.Attribute, len(permissionsFields))
-	for _, name := range permissionsFields {
-		attrs[name] = schema.StringAttribute{
-			Computed:    true,
-			Description: "Access level for this permission area (e.g. \"none\", \"read\", \"write\").",
-		}
-	}
-	return schema.SingleNestedAttribute{
-		Computed:    true,
-		Attributes:  attrs,
-		Description: "Per-area role permissions.",
-	}
+	Id              types.String      `tfsdk:"id"`
+	Name            types.String      `tfsdk:"name"`
+	Description     types.String      `tfsdk:"description"`
+	GroupType       types.String      `tfsdk:"group_type"`
+	TimeWindowStart types.Int64       `tfsdk:"time_window_start"`
+	TimeWindowEnd   types.Int64       `tfsdk:"time_window_end"`
+	Permissions     *permissionsModel `tfsdk:"permissions"`
+	EnterpriseIds   types.List        `tfsdk:"enterprise_ids"`
 }
 
 func flattenGroupDataSource(g *graphiant.IamGroup, m *groupDataSourceModel, ctx context.Context) diag.Diagnostics {
@@ -99,11 +66,12 @@ func (d *groupDataSource) Metadata(_ context.Context, req datasource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_group"
 }
 
-func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Looks up a single Graphiant IAM group by ID.",
-		Attributes:  groupDataSourceAttributes(true),
-	}
+// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
+// data_sources.group) via `make generate-schemas`.
+func (d *groupDataSource) Schema(ctx context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = datasource_group.GroupDataSourceSchema(ctx)
+	resp.Schema.Description = "Looks up a single Graphiant IAM group by ID."
+	resp.Schema.Attributes["id"] = schema.StringAttribute{Required: true, Description: "Group identifier."}
 }
 
 func (d *groupDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {

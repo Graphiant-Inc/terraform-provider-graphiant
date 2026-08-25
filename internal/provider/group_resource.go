@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
+	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/resource_group"
 )
 
 var (
@@ -43,7 +44,7 @@ type groupResourceModel struct {
 	Name               types.String      `tfsdk:"name"`
 	Description        types.String      `tfsdk:"description"`
 	GroupType          types.String      `tfsdk:"group_type"`
-	IdpGroupId         types.String      `tfsdk:"idp_group_id"`
+	GroupId            types.String      `tfsdk:"group_id"`
 	ManagesEnterprises types.Bool        `tfsdk:"manages_enterprises"`
 	TimeWindowStart    types.Int64       `tfsdk:"time_window_start"`
 	TimeWindowEnd      types.Int64       `tfsdk:"time_window_end"`
@@ -55,73 +56,76 @@ func (r *groupResource) Metadata(_ context.Context, req resource.MetadataRequest
 	resp.TypeName = req.ProviderTypeName + "_group"
 }
 
-func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages a Graphiant IAM group (a named collection of permissions that users can be assigned to).",
-		Attributes: map[string]schema.Attribute{
-			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "Group identifier assigned by the Graphiant controller.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"name": schema.StringAttribute{
-				Required:    true,
-				Description: "Group name.",
-				Validators: []validator.String{
-					stringvalidator.LengthAtLeast(1),
-				},
-			},
-			"description": schema.StringAttribute{
-				Required:    true,
-				Description: "Group description.",
-				Validators: []validator.String{
-					stringvalidator.LengthAtLeast(1),
-				},
-			},
-			"group_type": schema.StringAttribute{
-				Optional:    true,
-				Computed:    true,
-				Description: "Group type (e.g. \"custom\").",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"idp_group_id": schema.StringAttribute{
-				Optional:    true,
-				Description: "External group ID. Only supply this if the enterprise uses an identity provider (IdP) for group management.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"manages_enterprises": schema.BoolAttribute{
-				Optional:    true,
-				Description: "Whether members of this group can manage sub-enterprises. Can only be set at creation.",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.RequiresReplace(),
-				},
-			},
-			"time_window_start": schema.Int64Attribute{
-				Optional:    true,
-				Description: "Unix timestamp for the start of the access time window. Must be set together with time_window_end.",
-			},
-			"time_window_end": schema.Int64Attribute{
-				Optional:    true,
-				Description: "Unix timestamp for the end of the access time window. Must be set together with time_window_start.",
-			},
-			"permissions": permissionsSchemaAttribute(false),
-			// enterprise_ids is purely server-derived (from group
-			// membership elsewhere) and never changes as a side effect of
-			// updating the fields above.
-			"enterprise_ids": schema.ListAttribute{
-				Computed:    true,
-				ElementType: types.Int64Type,
-				Description: "Enterprises this group has access to.",
-				PlanModifiers: []planmodifier.List{
-					listplanmodifier.UseStateForUnknown(),
-				},
-			},
+// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
+// resources.group) via `make generate-schemas`. Note: the API's raw field
+// for what this provider calls "idp_group_id" is actually named "groupId"
+// (see manaV2's v1GroupsPutRequest); the generated attribute is named
+// group_id accordingly rather than idp_group_id.
+func (r *groupResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = resource_group.GroupResourceSchema(ctx)
+	resp.Schema.Description = "Manages a Graphiant IAM group (a named collection of permissions that users can be assigned to)."
+	resp.Schema.Attributes["id"] = schema.StringAttribute{
+		Computed:    true,
+		Description: "Group identifier assigned by the Graphiant controller.",
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.UseStateForUnknown(),
+		},
+	}
+	resp.Schema.Attributes["name"] = schema.StringAttribute{
+		Required:    true,
+		Description: "Group name.",
+		Validators: []validator.String{
+			stringvalidator.LengthAtLeast(1),
+		},
+	}
+	resp.Schema.Attributes["description"] = schema.StringAttribute{
+		Required:    true,
+		Description: "Group description.",
+		Validators: []validator.String{
+			stringvalidator.LengthAtLeast(1),
+		},
+	}
+	resp.Schema.Attributes["group_type"] = schema.StringAttribute{
+		Optional:    true,
+		Computed:    true,
+		Description: "Group type (e.g. \"custom\").",
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.UseStateForUnknown(),
+		},
+	}
+	resp.Schema.Attributes["group_id"] = schema.StringAttribute{
+		Optional:    true,
+		Computed:    true,
+		Description: "External group ID. Only supply this if the enterprise uses an identity provider (IdP) for group management.",
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.RequiresReplace(),
+		},
+	}
+	resp.Schema.Attributes["manages_enterprises"] = schema.BoolAttribute{
+		Optional:    true,
+		Computed:    true,
+		Description: "Whether members of this group can manage sub-enterprises. Can only be set at creation.",
+		PlanModifiers: []planmodifier.Bool{
+			boolplanmodifier.RequiresReplace(),
+		},
+	}
+	resp.Schema.Attributes["time_window_start"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: "Unix timestamp for the start of the access time window. Must be set together with time_window_end.",
+	}
+	resp.Schema.Attributes["time_window_end"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: "Unix timestamp for the end of the access time window. Must be set together with time_window_start.",
+	}
+	// enterprise_ids is purely server-derived (from group membership
+	// elsewhere) and never changes as a side effect of updating the fields
+	// above.
+	resp.Schema.Attributes["enterprise_ids"] = schema.ListAttribute{
+		Computed:    true,
+		ElementType: types.Int64Type,
+		Description: "Enterprises this group has access to.",
+		PlanModifiers: []planmodifier.List{
+			listplanmodifier.UseStateForUnknown(),
 		},
 	}
 }
@@ -219,7 +223,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	if v := strPtr(plan.GroupType); v != nil {
 		body.SetGroupType(*v)
 	}
-	if v := strPtr(plan.IdpGroupId); v != nil {
+	if v := strPtr(plan.GroupId); v != nil {
 		body.SetGroupId(*v)
 	}
 	if v := boolPtr(plan.ManagesEnterprises); v != nil {

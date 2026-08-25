@@ -2,7 +2,6 @@ package provider
 
 import (
 	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -20,26 +19,6 @@ type locationModel struct {
 	Latitude     types.Float64 `tfsdk:"latitude"`
 	Longitude    types.Float64 `tfsdk:"longitude"`
 	Notes        types.String  `tfsdk:"notes"`
-}
-
-func locationSchemaAttribute(computed bool) schema.SingleNestedAttribute {
-	return schema.SingleNestedAttribute{
-		Optional: !computed,
-		Computed: computed,
-		Attributes: map[string]schema.Attribute{
-			"address_line1": schema.StringAttribute{Optional: !computed, Computed: computed},
-			"address_line2": schema.StringAttribute{Optional: !computed, Computed: computed},
-			"city":          schema.StringAttribute{Optional: !computed, Computed: computed},
-			"state":         schema.StringAttribute{Optional: !computed, Computed: computed},
-			"state_code":    schema.StringAttribute{Optional: !computed, Computed: computed},
-			"province_code": schema.StringAttribute{Optional: !computed, Computed: computed},
-			"country":       schema.StringAttribute{Optional: !computed, Computed: computed},
-			"country_code":  schema.StringAttribute{Optional: !computed, Computed: computed},
-			"latitude":      schema.Float64Attribute{Optional: !computed, Computed: computed},
-			"longitude":     schema.Float64Attribute{Optional: !computed, Computed: computed},
-			"notes":         schema.StringAttribute{Optional: !computed, Computed: computed},
-		},
-	}
 }
 
 func expandLocation(m *locationModel) *graphiant.ManaV2Location {
