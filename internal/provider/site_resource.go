@@ -2,23 +2,16 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
-	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/resource_site"
+	sdk "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
 
 var (
@@ -32,161 +25,201 @@ func NewSiteResource() resource.Resource {
 }
 
 type siteResource struct {
-	client *gClient
+	pd *providerData
 }
 
-// siteResourceModel mirrors manaV2Site together with the subset of fields
-// that can be set on create/update via manaV2NewSite.
+type siteLocationModel struct {
+	AddressLine1 types.String  `tfsdk:"address_line1"`
+	AddressLine2 types.String  `tfsdk:"address_line2"`
+	City         types.String  `tfsdk:"city"`
+	State        types.String  `tfsdk:"state"`
+	StateCode    types.String  `tfsdk:"state_code"`
+	ProvinceCode types.String  `tfsdk:"province_code"`
+	Country      types.String  `tfsdk:"country"`
+	CountryCode  types.String  `tfsdk:"country_code"`
+	Latitude     types.Float64 `tfsdk:"latitude"`
+	Longitude    types.Float64 `tfsdk:"longitude"`
+	Notes        types.String  `tfsdk:"notes"`
+}
+
+var siteLocationAttrTypes = map[string]attrType{
+	"address_line1": types.StringType,
+	"address_line2": types.StringType,
+	"city":          types.StringType,
+	"state":         types.StringType,
+	"state_code":    types.StringType,
+	"province_code": types.StringType,
+	"country":       types.StringType,
+	"country_code":  types.StringType,
+	"latitude":      types.Float64Type,
+	"longitude":     types.Float64Type,
+	"notes":         types.StringType,
+}
+
+type siteRouteTagModel struct {
+	LevelZero types.String `tfsdk:"level_zero"`
+	LevelOne  types.String `tfsdk:"level_one"`
+	LevelTwo  types.String `tfsdk:"level_two"`
+}
+
 type siteResourceModel struct {
-	Id                     types.Int64    `tfsdk:"id"`
-	EnterpriseId           types.Int64    `tfsdk:"enterprise_id"`
-	Name                   types.String   `tfsdk:"name"`
-	Notes                  types.String   `tfsdk:"notes"`
-	Location               *locationModel `tfsdk:"location"`
-	Address                types.String   `tfsdk:"address"`
-	EdgeCount              types.Int64    `tfsdk:"edge_count"`
-	SegmentCount           types.Int64    `tfsdk:"segment_count"`
-	PolicyReferenceCount   types.Int64    `tfsdk:"policy_reference_count"`
-	SiteListReferenceCount types.Int64    `tfsdk:"site_list_reference_count"`
-	Tags                   types.List     `tfsdk:"tags"`
-	CreatedAt              types.String   `tfsdk:"created_at"`
-	UpdatedAt              types.String   `tfsdk:"updated_at"`
+	ID           types.String `tfsdk:"id"`
+	EnterpriseID types.Int64  `tfsdk:"enterprise_id"`
+	Name         types.String `tfsdk:"name"`
+	Notes        types.String `tfsdk:"notes"`
+	Location     types.Object `tfsdk:"location"`
+	RouteTag     types.Object `tfsdk:"route_tag"`
+	Tags         types.List   `tfsdk:"tags"`
 }
 
-func (r *siteResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *siteResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_site"
 }
 
-// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
-// resources.site) via `make generate-schemas`; RequiresReplace on
-// enterprise_id and UseStateForUnknown on the counters/created_at (but
-// deliberately not updated_at, which changes on every Update) are baked
-// into the generated schema via api/patch_ir.py.
-func (r *siteResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = resource_site.SiteResourceSchema(ctx)
-	resp.Schema.Description = "Manages a Graphiant site (a physical or logical location containing one or more edge devices)."
-	resp.Schema.Attributes["id"] = schema.Int64Attribute{
-		Computed:    true,
-		Description: "Site identifier assigned by the Graphiant controller.",
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.UseStateForUnknown(),
+func (r *siteResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "An enterprise site. Advanced policy-attachment fields on the underlying API " +
+			"(prefix sets, routing/traffic policy, NTP/SNMP/syslog/IPFIX operations) are not yet exposed here.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:      true,
+				Description:   "Server-assigned site ID.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"enterprise_id": schema.Int64Attribute{
+				Optional:    true,
+				Description: "Enterprise to create the site under (MSP use). Cannot be changed after creation.",
+			},
+			"name": schema.StringAttribute{
+				Required:    true,
+				Description: "Site name.",
+			},
+			"notes": schema.StringAttribute{
+				Optional:    true,
+				Description: "Free-form notes.",
+			},
+			"tags": schema.ListAttribute{
+				Computed:    true,
+				ElementType: types.StringType,
+				Description: "Server-assigned tags.",
+			},
+		},
+		Blocks: map[string]schema.Block{
+			"location": schema.SingleNestedBlock{
+				Description: "Site physical location.",
+				Attributes: map[string]schema.Attribute{
+					"address_line1": schema.StringAttribute{Optional: true},
+					"address_line2": schema.StringAttribute{Optional: true},
+					"city":          schema.StringAttribute{Optional: true},
+					"state":         schema.StringAttribute{Optional: true},
+					"state_code":    schema.StringAttribute{Optional: true},
+					"province_code": schema.StringAttribute{Optional: true},
+					"country":       schema.StringAttribute{Optional: true},
+					"country_code":  schema.StringAttribute{Optional: true},
+					"latitude":      schema.Float64Attribute{Optional: true},
+					"longitude":     schema.Float64Attribute{Optional: true},
+					"notes":         schema.StringAttribute{Optional: true},
+				},
+			},
+			"route_tag": schema.SingleNestedBlock{
+				Description: "Route tag levels applied to the site.",
+				Attributes: map[string]schema.Attribute{
+					"level_zero": schema.StringAttribute{Optional: true},
+					"level_one":  schema.StringAttribute{Optional: true},
+					"level_two":  schema.StringAttribute{Optional: true},
+				},
+			},
 		},
 	}
-	resp.Schema.Attributes["enterprise_id"] = schema.Int64Attribute{
-		Optional:    true,
-		Description: "Enterprise to create the site under. Only meaningful for reseller/multi-tenant accounts; cannot be changed after creation.",
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.RequiresReplace(),
-		},
-	}
-	resp.Schema.Attributes["name"] = schema.StringAttribute{
-		Required:    true,
-		Description: "Site name.",
-		Validators: []validator.String{
-			stringvalidator.LengthAtLeast(1),
-		},
-	}
-	resp.Schema.Attributes["notes"] = schema.StringAttribute{
-		Optional:    true,
-		Description: "Free-form notes about the site.",
-	}
-	resp.Schema.Attributes["address"] = schema.StringAttribute{
-		Computed:    true,
-		Description: "Resolved postal address for the site location.",
-		PlanModifiers: []planmodifier.String{
-			stringplanmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["edge_count"] = schema.Int64Attribute{
-		Computed:    true,
-		Description: "Number of edge devices onboarded at this site.",
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["segment_count"] = schema.Int64Attribute{
-		Computed:    true,
-		Description: "Number of LAN segments configured at this site.",
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["policy_reference_count"] = schema.Int64Attribute{
-		Computed:    true,
-		Description: "Number of policies referencing this site.",
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["site_list_reference_count"] = schema.Int64Attribute{
-		Computed:    true,
-		Description: "Number of site lists referencing this site.",
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["tags"] = schema.ListAttribute{
-		Computed:    true,
-		ElementType: types.StringType,
-		Description: "Tags applied to the site.",
-		PlanModifiers: []planmodifier.List{
-			listplanmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["created_at"] = schema.StringAttribute{
-		Computed:    true,
-		Description: "Creation timestamp (RFC3339, UTC).",
-		PlanModifiers: []planmodifier.String{
-			stringplanmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["updated_at"] = schema.StringAttribute{Computed: true, Description: "Last update timestamp (RFC3339, UTC)."}
 }
 
-func (r *siteResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-	client, ok := req.ProviderData.(*gClient)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("expected *gClient, got: %T", req.ProviderData))
-		return
-	}
-	r.client = client
+func (r *siteResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	r.pd = configurePD(req.ProviderData, &resp.Diagnostics)
 }
 
-func (r *siteResource) expandNewSite(_ context.Context, m *siteResourceModel) *graphiant.ManaV2NewSite {
-	site := graphiant.NewManaV2NewSiteWithDefaults()
-	if v := strPtr(m.Name); v != nil {
-		site.SetName(*v)
+// buildSite converts the plan's location/route_tag blocks into an SDK ManaV2NewSite.
+func (m *siteResourceModel) buildSite(ctx context.Context) (*sdk.ManaV2NewSite, diag.Diagnostics) {
+	site := &sdk.ManaV2NewSite{
+		Name:  m.Name.ValueStringPointer(),
+		Notes: m.Notes.ValueStringPointer(),
 	}
-	if v := strPtr(m.Notes); v != nil {
-		site.SetNotes(*v)
+
+	if !m.Location.IsNull() && !m.Location.IsUnknown() {
+		var loc siteLocationModel
+		diags := m.Location.As(ctx, &loc, objectAsOptions)
+		if diags.HasError() {
+			return nil, diags
+		}
+		site.Location = &sdk.ManaV2Location{
+			AddressLine1: loc.AddressLine1.ValueStringPointer(),
+			AddressLine2: loc.AddressLine2.ValueStringPointer(),
+			City:         loc.City.ValueStringPointer(),
+			State:        loc.State.ValueStringPointer(),
+			StateCode:    loc.StateCode.ValueStringPointer(),
+			ProvinceCode: loc.ProvinceCode.ValueStringPointer(),
+			Country:      loc.Country.ValueStringPointer(),
+			CountryCode:  loc.CountryCode.ValueStringPointer(),
+			Latitude:     loc.Latitude.ValueFloat64Pointer(),
+			Longitude:    loc.Longitude.ValueFloat64Pointer(),
+			Notes:        loc.Notes.ValueStringPointer(),
+		}
 	}
-	if m.Location != nil {
-		site.SetLocation(*expandLocation(m.Location))
+
+	if !m.RouteTag.IsNull() && !m.RouteTag.IsUnknown() {
+		var rt siteRouteTagModel
+		diags := m.RouteTag.As(ctx, &rt, objectAsOptions)
+		if diags.HasError() {
+			return nil, diags
+		}
+		site.RouteTag = &sdk.ManaV2RouteTag{
+			LevelZero: rt.LevelZero.ValueStringPointer(),
+			LevelOne:  rt.LevelOne.ValueStringPointer(),
+			LevelTwo:  rt.LevelTwo.ValueStringPointer(),
+		}
 	}
-	return site
+
+	return site, nil
 }
 
-func (r *siteResource) flatten(ctx context.Context, site *graphiant.ManaV2Site, m *siteResourceModel) diag.Diagnostics {
-	var diags diag.Diagnostics
-	m.Id = int64Value(site.Id)
-	m.Name = strValue(site.Name)
-	m.Notes = strValue(site.Notes)
-	m.Location = flattenLocation(site.Location)
-	m.Address = strValue(site.Address)
-	m.EdgeCount = int32Value(site.EdgeCount)
-	m.SegmentCount = int32Value(site.SegmentCount)
-	m.PolicyReferenceCount = int32Value(site.PolicyReferenceCount)
-	m.SiteListReferenceCount = int32Value(site.SiteListReferenceCount)
-	m.CreatedAt = timestampValue(site.CreatedAt)
-	m.UpdatedAt = timestampValue(site.UpdatedAt)
+// applySite copies an API-returned ManaV2Site back into the resource model. It
+// deliberately leaves m.RouteTag untouched: the API doesn't echo route_tag back on
+// ManaV2Site (only a resolved PolicyTag summary), so whatever the caller already
+// had in the model (from plan or prior state) is preserved as-is.
+func (m *siteResourceModel) applySite(ctx context.Context, site *sdk.ManaV2Site) diag.Diagnostics {
+	m.ID = types.StringValue(int64PtrID(site.Id))
+	m.Name = types.StringPointerValue(site.Name)
+	m.Notes = types.StringPointerValue(site.Notes)
 
-	tags, d := stringListValue(ctx, site.Tags)
-	diags.Append(d...)
+	tags, diags := types.ListValueFrom(ctx, types.StringType, site.Tags)
+	if diags.HasError() {
+		return diags
+	}
 	m.Tags = tags
-	return diags
+
+	if site.Location != nil {
+		loc := siteLocationModel{
+			AddressLine1: types.StringPointerValue(site.Location.AddressLine1),
+			AddressLine2: types.StringPointerValue(site.Location.AddressLine2),
+			City:         types.StringPointerValue(site.Location.City),
+			State:        types.StringPointerValue(site.Location.State),
+			StateCode:    types.StringPointerValue(site.Location.StateCode),
+			ProvinceCode: types.StringPointerValue(site.Location.ProvinceCode),
+			Country:      types.StringPointerValue(site.Location.Country),
+			CountryCode:  types.StringPointerValue(site.Location.CountryCode),
+			Latitude:     types.Float64PointerValue(site.Location.Latitude),
+			Longitude:    types.Float64PointerValue(site.Location.Longitude),
+			Notes:        types.StringPointerValue(site.Location.Notes),
+		}
+		obj, d := types.ObjectValueFrom(ctx, siteLocationAttrTypes, loc)
+		if d.HasError() {
+			return d
+		}
+		m.Location = obj
+	} else {
+		m.Location = types.ObjectNull(siteLocationAttrTypes)
+	}
+
+	return nil
 }
 
 func (r *siteResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -196,47 +229,37 @@ func (r *siteResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	tflog.Debug(ctx, "creating site", map[string]any{"name": plan.Name.ValueString()})
-
-	body := graphiant.NewV1SitesPostRequestWithDefaults()
-	body.SetSite(*r.expandNewSite(ctx, &plan))
-	if v := int64Ptr(plan.EnterpriseId); v != nil {
-		body.SetEnterpriseId(*v)
+	site, diags := plan.buildSite(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	out, httpRes, err := r.client.api.DefaultAPI.V1SitesPost(ctx).Authorization(r.client.authHeader()).V1SitesPostRequest(*body).Execute()
-	defer closeBody(httpRes)
+	body := sdk.V1SitesPostRequest{
+		EnterpriseId: plan.EnterpriseID.ValueInt64Pointer(),
+		Site:         site,
+	}
+
+	out, httpResp, err := r.pd.api.DefaultAPI.V1SitesPost(ctx).
+		Authorization(r.pd.token).
+		V1SitesPostRequest(body).
+		Execute()
+	closeBody(httpResp)
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating site", apiErrorDetail(err))
+		resp.Diagnostics.AddError("Unable to create site", apiErrorDetail(err))
 		return
 	}
 	if out == nil || out.Site == nil {
-		resp.Diagnostics.AddError("Error creating site", "the API did not return the created site")
+		resp.Diagnostics.AddError("Unable to create site", "API returned an empty response")
 		return
 	}
 
-	resp.Diagnostics.Append(r.flatten(ctx, out.Site, &plan)...)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-	tflog.Trace(ctx, "created site", map[string]any{"id": plan.Id.ValueInt64()})
-}
+	resp.Diagnostics.Append(plan.applySite(ctx, out.Site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-// findSite looks up a site by ID. There is no get-by-id endpoint for sites,
-// so this lists every site and filters client-side.
-func (r *siteResource) findSite(ctx context.Context, id int64) (*graphiant.ManaV2Site, error) {
-	out, httpRes, err := r.client.api.DefaultAPI.V1SitesGet(ctx).Authorization(r.client.authHeader()).Execute()
-	defer closeBody(httpRes)
-	if err != nil {
-		return nil, err
-	}
-	if out == nil {
-		return nil, nil
-	}
-	for _, s := range out.GetSites() {
-		if s.GetId() == id {
-			return &s, nil
-		}
-	}
-	return nil, nil
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *siteResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -246,50 +269,84 @@ func (r *siteResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	tflog.Debug(ctx, "reading site", map[string]any{"id": state.Id.ValueInt64()})
-
-	site, err := r.findSite(ctx, state.Id.ValueInt64())
-	if err != nil {
-		resp.Diagnostics.AddError("Error reading site", apiErrorDetail(err))
+	site, found, diags := r.findSite(ctx, state.ID.ValueString())
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if site == nil {
-		tflog.Debug(ctx, "site no longer exists, removing from state", map[string]any{"id": state.Id.ValueInt64()})
+	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
 
-	resp.Diagnostics.Append(r.flatten(ctx, site, &state)...)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-}
-
-func (r *siteResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state siteResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	resp.Diagnostics.Append(state.applySite(ctx, site)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	tflog.Debug(ctx, "updating site", map[string]any{"id": state.Id.ValueInt64()})
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
 
-	body := graphiant.NewV1SitesSiteIdPostRequestWithDefaults()
-	body.SetSite(*r.expandNewSite(ctx, &plan))
+func (r *siteResource) findSite(ctx context.Context, id string) (*sdk.ManaV2Site, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
 
-	out, httpRes, err := r.client.api.DefaultAPI.V1SitesSiteIdPost(ctx, state.Id.ValueInt64()).Authorization(r.client.authHeader()).V1SitesSiteIdPostRequest(*body).Execute()
-	defer closeBody(httpRes)
+	out, httpResp, err := r.pd.api.DefaultAPI.V1SitesGet(ctx).Authorization(r.pd.token).Execute()
+	closeBody(httpResp)
 	if err != nil {
-		resp.Diagnostics.AddError("Error updating site", apiErrorDetail(err))
+		diags.AddError("Unable to list sites", apiErrorDetail(err))
+		return nil, false, diags
+	}
+	if out == nil {
+		return nil, false, diags
+	}
+	for i := range out.Sites {
+		if int64PtrID(out.Sites[i].Id) == id {
+			return &out.Sites[i], true, diags
+		}
+	}
+	return nil, false, diags
+}
+
+func (r *siteResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan siteResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	site, diags := plan.buildSite(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	siteID, err := parseInt64ID(plan.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid site id", err.Error())
+		return
+	}
+
+	body := sdk.V1SitesSiteIdPostRequest{Site: site}
+	out, httpResp, err := r.pd.api.DefaultAPI.V1SitesSiteIdPost(ctx, siteID).
+		Authorization(r.pd.token).
+		V1SitesSiteIdPostRequest(body).
+		Execute()
+	closeBody(httpResp)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to update site", apiErrorDetail(err))
 		return
 	}
 	if out == nil || out.Site == nil {
-		resp.Diagnostics.AddError("Error updating site", "the API did not return the updated site")
+		resp.Diagnostics.AddError("Unable to update site", "API returned an empty response")
 		return
 	}
 
-	resp.Diagnostics.Append(r.flatten(ctx, out.Site, &plan)...)
+	resp.Diagnostics.Append(plan.applySite(ctx, out.Site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-	tflog.Trace(ctx, "updated site", map[string]any{"id": plan.Id.ValueInt64()})
 }
 
 func (r *siteResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -299,12 +356,16 @@ func (r *siteResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	tflog.Debug(ctx, "deleting site", map[string]any{"id": state.Id.ValueInt64()})
-
-	httpRes, err := r.client.api.DefaultAPI.V1SitesSiteIdDelete(ctx, state.Id.ValueInt64()).Authorization(r.client.authHeader()).Execute()
-	defer closeBody(httpRes)
+	siteID, err := parseInt64ID(state.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error deleting site", apiErrorDetail(err))
+		resp.Diagnostics.AddError("Invalid site id", err.Error())
+		return
+	}
+
+	httpResp, err := r.pd.api.DefaultAPI.V1SitesSiteIdDelete(ctx, siteID).Authorization(r.pd.token).Execute()
+	closeBody(httpResp)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to delete site", apiErrorDetail(err))
 	}
 }
 

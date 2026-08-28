@@ -11,7 +11,6 @@ import (
 	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider"
 )
 
-//go:generate api/generate.sh
 //go:generate go tool tfplugindocs generate
 
 // version is set via -ldflags "-X main.version=..." during release builds (see .goreleaser.yml).

@@ -1,9 +1,8 @@
-resource "graphiant_site_list" "west_coast" {
+resource "graphiant_site_list" "example" {
   name        = "west-coast-sites"
-  description = "Sites used as the scope for west-coast content filtering"
+  description = "All West Coast sites"
 
   entries = [
-    { site_id = graphiant_site.hq.id },
-    { tag = { level_zero = 1, level_one = 2 } },
+    { site_id = graphiant_site.example.id },
   ]
 }

@@ -3,22 +3,22 @@
 page_title: "graphiant_device Data Source - terraform-provider-graphiant"
 subcategory: ""
 description: |-
-  Looks up a single onboarded Graphiant device by ID. Read-only; this provider does not manage device configuration.
+  Looks up a single device by ID. Deeper device state (circuits, interfaces, BGP, etc.) is not yet exposed.
 ---
 
 # graphiant_device (Data Source)
 
-Looks up a single onboarded Graphiant device by ID. Read-only; this provider does not manage device configuration.
+Looks up a single device by ID. Deeper device state (circuits, interfaces, BGP, etc.) is not yet exposed.
 
 ## Example Usage
 
 ```terraform
-data "graphiant_device" "edge1" {
-  id = 67890
+data "graphiant_device" "example" {
+  id = 12345
 }
 
-output "edge1_status" {
-  value = data.graphiant_device.edge1.status
+output "device_hostname" {
+  value = data.graphiant_device.example.hostname
 }
 ```
 
@@ -27,26 +27,16 @@ output "edge1_status" {
 
 ### Required
 
-- `id` (Number) Device identifier.
+- `id` (Number) Device ID.
 
 ### Read-Only
 
-- `bgp_enabled` (Boolean) Whether BGP is enabled on the device.
-- `created_at` (String) Creation timestamp (RFC3339, UTC).
-- `dhcp_server_enabled` (Boolean) Whether the DHCP server is enabled on the device.
-- `hostname` (String) Device hostname.
-- `ipfix_enabled` (Boolean) Whether IPFIX export is enabled on the device.
-- `last_booted_at` (String) Timestamp of the device's last boot (RFC3339, UTC).
-- `lldp_enabled` (Boolean) Whether LLDP is enabled on the device.
-- `maintenance_mode` (Boolean) Whether the device is in maintenance mode.
-- `oper_staled` (Boolean) Whether the device's operational state is stale.
-- `ospfv2_enabled` (Boolean) Whether OSPFv2 is enabled on the device.
-- `ospfv3_enabled` (Boolean) Whether OSPFv3 is enabled on the device.
-- `platform` (String) Device hardware/software platform.
-- `role` (String) Device role (e.g. "edge", "gateway").
-- `serial_number` (String) Device serial number.
-- `site_id` (Number) ID of the site this device is onboarded at.
-- `site_name` (String) Name of the site this device is onboarded at.
-- `software_version` (String) Running software version.
-- `static_routes_enabled` (Boolean) Whether static routes are enabled on the device.
-- `status` (String) Current device status.
+- `hostname` (String)
+- `maintenance_mode` (Boolean)
+- `notes` (String)
+- `platform` (String)
+- `role` (String)
+- `serial_number` (String)
+- `site_id` (Number)
+- `software_version` (String)
+- `status` (String)
