@@ -1,139 +1,172 @@
+// Package provider implements the Graphiant Terraform provider directly on
+// top of github.com/Graphiant-Inc/graphiant-sdk-go's generated client and
+// models — there is no intermediate codegen step; each resource/data source
+// maps Terraform schema fields to SDK request/response structs by hand.
 package provider
 
 import (
 	"context"
-	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+
+	sdk "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
 
-// Ensure GraphiantProvider satisfies the expected interfaces.
+// Ensure GraphiantProvider satisfies the provider.Provider interface.
 var _ provider.Provider = &GraphiantProvider{}
 
-// GraphiantProvider is the Terraform provider implementation for Graphiant NaaS,
-// backed by github.com/Graphiant-Inc/graphiant-sdk-go.
+// GraphiantProvider is the Terraform provider implementation.
 type GraphiantProvider struct {
-	// version is set to the provider version at release build time.
+	// version is set to the provider version at release build time (see main.go).
 	version string
 }
 
 // graphiantProviderModel maps the provider configuration block.
 type graphiantProviderModel struct {
-	Host               types.String `tfsdk:"host"`
-	AccessToken        types.String `tfsdk:"access_token"`
-	Username           types.String `tfsdk:"username"`
-	Password           types.String `tfsdk:"password"`
-	InsecureSkipVerify types.Bool   `tfsdk:"insecure_skip_verify"`
+	Host        types.String `tfsdk:"host"`
+	AccessToken types.String `tfsdk:"access_token"`
+	Username    types.String `tfsdk:"username"`
+	Password    types.String `tfsdk:"password"`
 }
 
-func New(version string) func() provider.Provider {
-	return func() provider.Provider {
-		return &GraphiantProvider{version: version}
-	}
-}
-
-func (p *GraphiantProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
+func (p *GraphiantProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "graphiant"
 	resp.Version = p.version
 }
 
-func (p *GraphiantProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
+func (p *GraphiantProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "The Graphiant provider manages Graphiant Network-as-a-Service (NaaS) resources: sites, IAM users and groups, and read-only access to onboarded devices. It is backed by the graphiant-sdk-go client.",
+		Description: "Interact with the Graphiant network platform API.",
 		Attributes: map[string]schema.Attribute{
 			"host": schema.StringAttribute{
-				Optional:    true,
-				Description: "Graphiant API base URL. Defaults to https://api.graphiant.com. Can also be set via the GRAPHIANT_API_HOST or GRAPHIANT_HOST environment variables.",
+				Optional: true,
+				Description: "Graphiant API base URL. Defaults to https://api.graphiant.com. " +
+					"Can also be set via the GRAPHIANT_API_HOST or GRAPHIANT_HOST environment variable.",
 			},
 			"access_token": schema.StringAttribute{
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Bearer token issued by the Graphiant portal/CLI. Can also be set via the GRAPHIANT_ACCESS_TOKEN environment variable. Takes precedence over username/password.",
+				Optional:  true,
+				Sensitive: true,
+				Description: "Bearer access token for the Graphiant API. Takes precedence over username/password. " +
+					"Can also be set via the GRAPHIANT_ACCESS_TOKEN environment variable.",
 			},
 			"username": schema.StringAttribute{
-				Optional:    true,
-				Description: "Graphiant username, used to log in when access_token is not set. Can also be set via the GRAPHIANT_USERNAME environment variable.",
+				Optional: true,
+				Description: "Graphiant username. Used with password to obtain an access token when access_token " +
+					"is not set. Can also be set via the GRAPHIANT_USERNAME environment variable.",
 			},
 			"password": schema.StringAttribute{
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Graphiant password, used to log in when access_token is not set. Can also be set via the GRAPHIANT_PASSWORD environment variable.",
-			},
-			"insecure_skip_verify": schema.BoolAttribute{
-				Optional:    true,
-				Description: "Skip TLS certificate verification when calling the Graphiant API. Only use this against a trusted on-prem/lab controller.",
+				Optional:  true,
+				Sensitive: true,
+				Description: "Graphiant password. Used with username to obtain an access token when access_token " +
+					"is not set. Can also be set via the GRAPHIANT_PASSWORD environment variable.",
 			},
 		},
 	}
 }
 
 func (p *GraphiantProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-	var data graphiantProviderModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	var config graphiantProviderModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	cfg := providerConfig{
-		Host:         firstNonEmpty(data.Host.ValueString(), os.Getenv("GRAPHIANT_API_HOST"), os.Getenv("GRAPHIANT_HOST")),
-		AccessToken:  firstNonEmpty(data.AccessToken.ValueString(), os.Getenv("GRAPHIANT_ACCESS_TOKEN")),
-		Username:     firstNonEmpty(data.Username.ValueString(), os.Getenv("GRAPHIANT_USERNAME")),
-		Password:     firstNonEmpty(data.Password.ValueString(), os.Getenv("GRAPHIANT_PASSWORD")),
-		InsecureSkip: data.InsecureSkipVerify.ValueBool(),
+	cfg := sdk.NewConfiguration()
+	cfg.UserAgent = "terraform-provider-graphiant/" + p.version
+
+	if host := config.Host.ValueString(); host != "" {
+		applyHost(cfg, host)
+	} else {
+		sdk.ConfigureHostFromEnv(cfg)
 	}
 
-	client, err := newClient(ctx, cfg)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to create Graphiant API client", err.Error())
-		return
-	}
+	client := sdk.NewAPIClient(cfg)
 
-	resp.DataSourceData = client
-	resp.ResourceData = client
-}
-
-func (p *GraphiantProvider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{
-		NewSiteResource,
-		NewGroupResource,
-		NewUserResource,
-		NewSiteListResource,
-		NewContentFilterResource,
-		NewAppListResource,
-		NewCustomAppResource,
-	}
-}
-
-func (p *GraphiantProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		NewSiteDataSource,
-		NewSitesDataSource,
-		NewGroupDataSource,
-		NewGroupsDataSource,
-		NewUserDataSource,
-		NewUsersDataSource,
-		NewDeviceDataSource,
-		NewDevicesDataSource,
-		NewSiteListDataSource,
-		NewSiteListsDataSource,
-		NewContentFilterDataSource,
-		NewContentFiltersDataSource,
-		NewAppListDataSource,
-		NewAppListsDataSource,
-		NewCustomAppDataSource,
-		NewCustomAppsDataSource,
-	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
+	var token string
+	switch {
+	case config.AccessToken.ValueString() != "":
+		token = normalizeBearer(config.AccessToken.ValueString())
+	case config.Username.ValueString() != "" && config.Password.ValueString() != "":
+		var err error
+		token, err = loginBearer(ctx, client, config.Username.ValueString(), config.Password.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Unable to authenticate with Graphiant", err.Error())
+			return
+		}
+	default:
+		var err error
+		token, err = sdk.AuthorizationBearerFromEnvOrLogin(ctx, client)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Unable to resolve Graphiant credentials",
+				"Set access_token or username/password in the provider configuration block, or set "+
+					"GRAPHIANT_ACCESS_TOKEN (or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD) in the environment: "+err.Error(),
+			)
+			return
 		}
 	}
-	return ""
+
+	pd := &providerData{api: client, token: token}
+	resp.ResourceData = pd
+	resp.DataSourceData = pd
+}
+
+func (p *GraphiantProvider) Resources(ctx context.Context) []func() resource.Resource {
+	return []func() resource.Resource{
+		NewSiteResource,
+		NewUserResource,
+		NewGroupResource,
+		NewAppListResource,
+		NewContentFilterResource,
+		NewCustomAppResource,
+		NewSiteListResource,
+		NewEnterpriseResource,
+		NewGatewayResource,
+		NewPublicVifResource,
+		NewExtranetResource,
+		NewSoftwareRolloutResource,
+		NewDeviceBringupResource,
+		NewDeviceDecommissionResource,
+		NewB2bProducerServiceResource,
+		NewB2bCustomerResource,
+		NewB2bMatchResource,
+		NewB2bConsumerResource,
+		NewAssuranceGlobalResource,
+		NewAssuranceClassifiedApplicationResource,
+		NewAlertIntegrationResource,
+		NewAlertNotificationResource,
+		NewRouteTagResource,
+		NewDeviceConfigResource,
+		NewLanSegmentResource,
+	}
+}
+
+func (p *GraphiantProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+	return []func() datasource.DataSource{
+		NewDeviceDataSource,
+		NewEdgesDataSource,
+		NewSiteDevicesDataSource,
+		NewAlertRecordsDataSource,
+		NewAlertRulesDataSource,
+		NewAssuranceFlexAlgosDataSource,
+		NewAssuranceDnsproxyEntriesDataSource,
+		NewTroubleshootingDeviceDataSource,
+		NewTroubleshootingSiteDataSource,
+		NewRoutingPolicyDataSource,
+		NewPrefixSetDataSource,
+		NewDomainCategoriesDataSource,
+		NewRegionsDataSource,
+		NewIpsecProfilesDataSource,
+	}
+}
+
+// New returns the provider factory main.go hands to providerserver.Serve.
+func New(version string) func() provider.Provider {
+	return func() provider.Provider {
+		return &GraphiantProvider{version: version}
+	}
 }

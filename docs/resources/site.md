@@ -3,25 +3,31 @@
 page_title: "graphiant_site Resource - terraform-provider-graphiant"
 subcategory: ""
 description: |-
-  Manages a Graphiant site (a physical or logical location containing one or more edge devices).
+  An enterprise site. Advanced policy-attachment fields on the underlying API (prefix sets, routing/traffic policy, NTP/SNMP/syslog/IPFIX operations) are not yet exposed here.
 ---
 
 # graphiant_site (Resource)
 
-Manages a Graphiant site (a physical or logical location containing one or more edge devices).
+An enterprise site. Advanced policy-attachment fields on the underlying API (prefix sets, routing/traffic policy, NTP/SNMP/syslog/IPFIX operations) are not yet exposed here.
 
 ## Example Usage
 
 ```terraform
-resource "graphiant_site" "hq" {
-  name  = "Headquarters"
-  notes = "Managed by Terraform"
+resource "graphiant_site" "example" {
+  name  = "sf-hq"
+  notes = "San Francisco headquarters"
 
-  location = {
-    address_line1 = "123 Main St"
-    city          = "San Jose"
+  location {
+    address_line1 = "123 Market St"
+    city          = "San Francisco"
     state_code    = "CA"
     country_code  = "US"
+    latitude      = 37.7749
+    longitude     = -122.4194
+  }
+
+  route_tag {
+    level_zero = "prod"
   }
 }
 ```
@@ -35,23 +41,17 @@ resource "graphiant_site" "hq" {
 
 ### Optional
 
-- `enterprise_id` (Number) Enterprise to create the site under. Only meaningful for reseller/multi-tenant accounts; cannot be changed after creation.
-- `location` (Attributes) (see [below for nested schema](#nestedatt--location))
-- `notes` (String) Free-form notes about the site.
+- `enterprise_id` (Number) Enterprise to create the site under (MSP use). Cannot be changed after creation.
+- `location` (Block, Optional) Site physical location. (see [below for nested schema](#nestedblock--location))
+- `notes` (String) Free-form notes.
+- `route_tag` (Block, Optional) Route tag levels applied to the site. (see [below for nested schema](#nestedblock--route_tag))
 
 ### Read-Only
 
-- `address` (String) Resolved postal address for the site location.
-- `created_at` (String) Creation timestamp (RFC3339, UTC).
-- `edge_count` (Number) Number of edge devices onboarded at this site.
-- `id` (Number) Site identifier assigned by the Graphiant controller.
-- `policy_reference_count` (Number) Number of policies referencing this site.
-- `segment_count` (Number) Number of LAN segments configured at this site.
-- `site_list_reference_count` (Number) Number of site lists referencing this site.
-- `tags` (List of String) Tags applied to the site.
-- `updated_at` (String) Last update timestamp (RFC3339, UTC).
+- `id` (String) Server-assigned site ID.
+- `tags` (List of String) Server-assigned tags.
 
-<a id="nestedatt--location"></a>
+<a id="nestedblock--location"></a>
 ### Nested Schema for `location`
 
 Optional:
@@ -68,6 +68,16 @@ Optional:
 - `state` (String)
 - `state_code` (String)
 
+
+<a id="nestedblock--route_tag"></a>
+### Nested Schema for `route_tag`
+
+Optional:
+
+- `level_one` (String)
+- `level_two` (String)
+- `level_zero` (String)
+
 ## Import
 
 Import is supported using the following syntax:
@@ -75,7 +85,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# A graphiant_site can be imported by its numeric site id, as shown by the
-# Graphiant portal or the graphiant_sites data source.
-terraform import graphiant_site.hq 12345
+terraform import graphiant_site.example <site_id>
 ```

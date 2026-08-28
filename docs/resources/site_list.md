@@ -3,23 +3,22 @@
 page_title: "graphiant_site_list Resource - terraform-provider-graphiant"
 subcategory: ""
 description: |-
-  Manages a Graphiant global site list: a named, reusable group of sites (or route tags) referenced by other global config such as content filters.
+  A named list of sites (by ID or route tag), used as a scope target in policies. The update endpoint has no name field, so name forces recreation on change.
 ---
 
 # graphiant_site_list (Resource)
 
-Manages a Graphiant global site list: a named, reusable group of sites (or route tags) referenced by other global config such as content filters.
+A named list of sites (by ID or route tag), used as a scope target in policies. The update endpoint has no name field, so name forces recreation on change.
 
 ## Example Usage
 
 ```terraform
-resource "graphiant_site_list" "west_coast" {
+resource "graphiant_site_list" "example" {
   name        = "west-coast-sites"
-  description = "Sites used as the scope for west-coast content filtering"
+  description = "All West Coast sites"
 
   entries = [
-    { site_id = graphiant_site.hq.id },
-    { tag = { level_zero = 1, level_one = 2 } },
+    { site_id = graphiant_site.example.id },
   ]
 }
 ```
@@ -29,31 +28,27 @@ resource "graphiant_site_list" "west_coast" {
 
 ### Required
 
-- `entries` (Attributes List) Members of this site list. Each entry is exactly one of site_id or tag. (see [below for nested schema](#nestedatt--entries))
-- `name` (String) Site list name. The API has no rename endpoint, so changing this replaces the site list.
+- `name` (String)
 
 ### Optional
 
-- `description` (String) Free-form description of the site list.
+- `description` (String)
+- `entries` (Attributes List) (see [below for nested schema](#nestedatt--entries))
 
 ### Read-Only
 
-- `created_at` (String) Creation timestamp (RFC3339, UTC).
-- `edge_references` (Number) Number of edge devices referencing this site list.
-- `id` (Number) Site list identifier assigned by the Graphiant controller.
-- `policy_references` (Number) Number of policies referencing this site list.
-- `site_list_references` (Number) Number of other site lists referencing this site list.
+- `id` (String) The ID of this resource.
 
 <a id="nestedatt--entries"></a>
 ### Nested Schema for `entries`
 
 Optional:
 
-- `site_id` (Number)
-- `tag` (Attributes) Hierarchical route-tag reference. Set instead of site_id to target a route tag rather than a single site. (see [below for nested schema](#nestedatt--entries--tag))
+- `route_tag` (Attributes) Match sites by route tag instead of a direct ID. (see [below for nested schema](#nestedatt--entries--route_tag))
+- `site_id` (Number) Direct site ID. Mutually exclusive with route_tag within a single entry.
 
-<a id="nestedatt--entries--tag"></a>
-### Nested Schema for `entries.tag`
+<a id="nestedatt--entries--route_tag"></a>
+### Nested Schema for `entries.route_tag`
 
 Optional:
 
@@ -68,7 +63,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# A graphiant_site_list can be imported by its numeric id, as shown by the
-# Graphiant portal or the graphiant_site_lists data source.
-terraform import graphiant_site_list.west_coast 12345
+terraform import graphiant_site_list.example <site_list_id>
 ```

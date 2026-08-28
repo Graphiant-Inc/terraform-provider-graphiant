@@ -5,45 +5,64 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
+func TestProviderSchema(t *testing.T) {
+	ctx := context.Background()
+	p := &GraphiantProvider{version: "test"}
+
+	var resp provider.SchemaResponse
+	p.Schema(ctx, provider.SchemaRequest{}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("provider schema has errors: %v", resp.Diagnostics)
+	}
+	if diags := resp.Schema.ValidateImplementation(ctx); diags.HasError() {
+		t.Fatalf("provider schema validation failed: %v", diags)
+	}
+}
+
 func TestResourceSchemas(t *testing.T) {
 	ctx := context.Background()
-	p := New("test")()
+	p := &GraphiantProvider{version: "test"}
 
-	for _, f := range p.(*GraphiantProvider).Resources(ctx) {
-		r := f()
-		var metaResp resource.MetadataResponse
-		r.Metadata(ctx, resource.MetadataRequest{ProviderTypeName: "graphiant"}, &metaResp)
+	for _, newResource := range p.Resources(ctx) {
+		r := newResource()
 
-		var schemaResp resource.SchemaResponse
-		r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
-		if schemaResp.Diagnostics.HasError() {
-			t.Errorf("%s: schema diagnostics: %v", metaResp.TypeName, schemaResp.Diagnostics)
+		var meta resource.MetadataResponse
+		r.Metadata(ctx, resource.MetadataRequest{ProviderTypeName: "graphiant"}, &meta)
+
+		var resp resource.SchemaResponse
+		r.Schema(ctx, resource.SchemaRequest{}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("%s: schema has errors: %v", meta.TypeName, resp.Diagnostics)
+			continue
 		}
-		if diags := schemaResp.Schema.ValidateImplementation(ctx); diags.HasError() {
-			t.Errorf("%s: invalid schema: %v", metaResp.TypeName, diags)
+		if diags := resp.Schema.ValidateImplementation(ctx); diags.HasError() {
+			t.Errorf("%s: schema validation failed: %v", meta.TypeName, diags)
 		}
 	}
 }
 
 func TestDataSourceSchemas(t *testing.T) {
 	ctx := context.Background()
-	p := New("test")()
+	p := &GraphiantProvider{version: "test"}
 
-	for _, f := range p.(*GraphiantProvider).DataSources(ctx) {
-		d := f()
-		var metaResp datasource.MetadataResponse
-		d.Metadata(ctx, datasource.MetadataRequest{ProviderTypeName: "graphiant"}, &metaResp)
+	for _, newDataSource := range p.DataSources(ctx) {
+		d := newDataSource()
 
-		var schemaResp datasource.SchemaResponse
-		d.Schema(ctx, datasource.SchemaRequest{}, &schemaResp)
-		if schemaResp.Diagnostics.HasError() {
-			t.Errorf("%s: schema diagnostics: %v", metaResp.TypeName, schemaResp.Diagnostics)
+		var meta datasource.MetadataResponse
+		d.Metadata(ctx, datasource.MetadataRequest{ProviderTypeName: "graphiant"}, &meta)
+
+		var resp datasource.SchemaResponse
+		d.Schema(ctx, datasource.SchemaRequest{}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("%s: schema has errors: %v", meta.TypeName, resp.Diagnostics)
+			continue
 		}
-		if diags := schemaResp.Schema.ValidateImplementation(ctx); diags.HasError() {
-			t.Errorf("%s: invalid schema: %v", metaResp.TypeName, diags)
+		if diags := resp.Schema.ValidateImplementation(ctx); diags.HasError() {
+			t.Errorf("%s: schema validation failed: %v", meta.TypeName, diags)
 		}
 	}
 }

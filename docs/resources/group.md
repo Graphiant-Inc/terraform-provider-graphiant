@@ -3,25 +3,29 @@
 page_title: "graphiant_group Resource - terraform-provider-graphiant"
 subcategory: ""
 description: |-
-  Manages a Graphiant IAM group (a named collection of permissions that users can be assigned to).
+  A Graphiant permissions group. Create has no response body, so the new group is located afterward by matching name+description in the group list — this will fail ambiguously if another group with the same name and description already exists.
 ---
 
 # graphiant_group (Resource)
 
-Manages a Graphiant IAM group (a named collection of permissions that users can be assigned to).
+A Graphiant permissions group. Create has no response body, so the new group is located afterward by matching name+description in the group list — this will fail ambiguously if another group with the same name and description already exists.
 
 ## Example Usage
 
 ```terraform
-resource "graphiant_group" "network_admins" {
+resource "graphiant_group" "example" {
   name        = "network-admins"
   description = "Full network configuration access"
 
-  permissions = {
-    network_configuration          = "write"
-    monitoring_and_troubleshooting = "write"
-    insights                       = "read"
+  permissions {
+    network_configuration          = "readWrite"
+    monitoring_and_troubleshooting = "readWrite"
+    reports                        = "read"
   }
+
+  members = [
+    graphiant_user.example.id,
+  ]
 }
 ```
 
@@ -30,46 +34,46 @@ resource "graphiant_group" "network_admins" {
 
 ### Required
 
-- `description` (String) Group description.
-- `name` (String) Group name.
+- `description` (String)
+- `name` (String)
 
 ### Optional
 
-- `group_id` (String) External group ID. Only supply this if the enterprise uses an identity provider (IdP) for group management.
-- `group_type` (String) Group type (e.g. "custom").
-- `manages_enterprises` (Boolean) Whether members of this group can manage sub-enterprises. Can only be set at creation.
-- `permissions` (Attributes) Per-area role permissions. (see [below for nested schema](#nestedatt--permissions))
-- `time_window_end` (Number) Unix timestamp for the end of the access time window. Must be set together with time_window_start.
-- `time_window_start` (Number) Unix timestamp for the start of the access time window. Must be set together with time_window_end.
+- `group_id` (String) Only supply if the enterprise uses an IdP for group provisioning.
+- `group_type` (String)
+- `manages_enterprises` (Boolean) MSP use: whether this group manages child enterprises.
+- `members` (Set of String) User IDs belonging to this group. Managed as a full replace on every change.
+- `permissions` (Block, Optional) Per-module permission levels (values are opaque strings defined by the API). (see [below for nested schema](#nestedblock--permissions))
+- `time_window_end` (Number)
+- `time_window_start` (Number)
 
 ### Read-Only
 
-- `enterprise_ids` (List of Number) Enterprises this group has access to.
-- `id` (String) Group identifier assigned by the Graphiant controller.
+- `id` (String) The ID of this resource.
 
-<a id="nestedatt--permissions"></a>
+<a id="nestedblock--permissions"></a>
 ### Nested Schema for `permissions`
 
 Optional:
 
 - `asset_manager` (String)
-- `b2b` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `b2b` (String)
 - `b2b_security_profile_external` (String)
 - `billing_and_invoicing` (String)
-- `compliance` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `compliance` (String)
 - `developer_tools` (String)
-- `gateway` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `gateway` (String)
 - `global_services` (String)
-- `insights` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `licensing` (String) Access level for this permission area (e.g. "none", "read", "write").
-- `logs` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `insights` (String)
+- `licensing` (String)
+- `logs` (String)
 - `monitoring_and_troubleshooting` (String)
 - `network_configuration` (String)
 - `order_status` (String)
-- `reports` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `reports` (String)
 - `safety_and_security` (String)
 - `service_policies` (String)
-- `support` (String) Access level for this permission area (e.g. "none", "read", "write").
+- `support` (String)
 - `user_and_tenant_management` (String)
 
 ## Import
@@ -79,7 +83,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# A graphiant_group can be imported by its group id, as shown by the
-# Graphiant portal or the graphiant_groups data source.
-terraform import graphiant_group.network_admins grp-abc123
+terraform import graphiant_group.example <group_id>
 ```
