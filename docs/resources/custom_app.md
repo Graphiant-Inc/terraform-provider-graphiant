@@ -3,24 +3,23 @@
 page_title: "graphiant_custom_app Resource - terraform-provider-graphiant"
 subcategory: ""
 description: |-
-  Manages a Graphiant custom app: a user-defined app match (by URL, IP, and/or port) referenced by app lists and policies.
+  A custom application definition, matched by URL, IP lists/prefixes, and/or port ranges.
 ---
 
 # graphiant_custom_app (Resource)
 
-Manages a Graphiant custom app: a user-defined app match (by URL, IP, and/or port) referenced by app lists and policies.
+A custom application definition, matched by URL, IP lists/prefixes, and/or port ranges.
 
 ## Example Usage
 
 ```terraform
-resource "graphiant_custom_app" "internal_wiki" {
-  name        = "internal-wiki"
-  description = "Internal wiki, matched by URL and port"
-  url         = "wiki.internal.example.com"
-  ip_protocol = "tcp"
+resource "graphiant_custom_app" "example" {
+  name        = "internal-erp"
+  description = "Internal ERP system"
+  ip_prefixes = ["10.10.0.0/16"]
 
   port_ranges = [
-    { lower = 443, upper = 443 },
+    { lower = 8443, upper = 8443 },
   ]
 }
 ```
@@ -30,22 +29,20 @@ resource "graphiant_custom_app" "internal_wiki" {
 
 ### Required
 
-- `name` (String) Custom app name.
+- `name` (String)
 
 ### Optional
 
-- `description` (String) Free-form description of the custom app.
+- `description` (String)
 - `ip_lists` (List of String)
 - `ip_prefixes` (List of String)
-- `ip_protocol` (String)
+- `ip_protocol` (String) Protocol enum value, as defined by the API (values are not enumerated in the SDK).
 - `port_ranges` (Attributes List) (see [below for nested schema](#nestedatt--port_ranges))
-- `url` (String) URL or domain this app matches.
+- `url` (String)
 
 ### Read-Only
 
-- `app_list_reference_count` (Number) Number of app lists referencing this custom app.
-- `id` (Number) Custom app identifier assigned by the Graphiant controller.
-- `policy_reference_count` (Number) Number of policies referencing this custom app.
+- `id` (String) The ID of this resource.
 
 <a id="nestedatt--port_ranges"></a>
 ### Nested Schema for `port_ranges`
@@ -62,7 +59,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# A graphiant_custom_app can be imported by its numeric id, as shown by the
-# Graphiant portal or the graphiant_custom_apps data source.
-terraform import graphiant_custom_app.internal_wiki 12345
+terraform import graphiant_custom_app.example <custom_app_id>
 ```

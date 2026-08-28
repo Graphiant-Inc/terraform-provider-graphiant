@@ -3,23 +3,22 @@
 page_title: "graphiant_app_list Resource - terraform-provider-graphiant"
 subcategory: ""
 description: |-
-  Manages a Graphiant global app list: a named, reusable group of apps referenced by policies.
+  A named list of applications (custom or built-in), used as a match target in policies.
 ---
 
 # graphiant_app_list (Resource)
 
-Manages a Graphiant global app list: a named, reusable group of apps referenced by policies.
+A named list of applications (custom or built-in), used as a match target in policies.
 
 ## Example Usage
 
 ```terraform
-resource "graphiant_app_list" "productivity_apps" {
-  name        = "productivity-apps"
-  description = "Apps allowed under the productivity traffic policy"
+resource "graphiant_app_list" "example" {
+  name        = "internal-apps"
+  description = "Internal business applications"
 
   apps = [
-    { id = 101, type = "graphiant" },
-    { id = graphiant_custom_app.internal_wiki.id, type = "custom" },
+    { id = graphiant_custom_app.example.id, type = "custom" },
   ]
 }
 ```
@@ -29,26 +28,24 @@ resource "graphiant_app_list" "productivity_apps" {
 
 ### Required
 
-- `apps` (Attributes List) Apps included in this app list. (see [below for nested schema](#nestedatt--apps))
-- `name` (String) App list name.
+- `name` (String)
 
 ### Optional
 
-- `description` (String) Free-form description of the app list.
+- `apps` (Attributes List) (see [below for nested schema](#nestedatt--apps))
+- `description` (String)
 
 ### Read-Only
 
-- `app_count` (Number) Number of apps in this app list.
-- `id` (Number) App list identifier assigned by the Graphiant controller.
-- `policy_reference_count` (Number) Number of policies referencing this app list.
+- `id` (String) The ID of this resource.
 
 <a id="nestedatt--apps"></a>
 ### Nested Schema for `apps`
 
 Required:
 
-- `id` (Number) Identifier of the referenced app.
-- `type` (String) Type discriminator for the referenced app (e.g. "custom", "graphiant", "app-list").
+- `id` (Number) ID of a custom app or built-in app/category.
+- `type` (String) App identifier type, as defined by the API (values are not enumerated in the SDK).
 
 ## Import
 
@@ -57,7 +54,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# A graphiant_app_list can be imported by its numeric id, as shown by the
-# Graphiant portal or the graphiant_app_lists data source.
-terraform import graphiant_app_list.productivity_apps 12345
+terraform import graphiant_app_list.example <app_list_id>
 ```

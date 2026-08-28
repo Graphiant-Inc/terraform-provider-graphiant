@@ -1,0 +1,1 @@
+terraform import graphiant_b2b_producer_service.partner_peering <producer_service_id>

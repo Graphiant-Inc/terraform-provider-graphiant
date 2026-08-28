@@ -1,10 +1,9 @@
-resource "graphiant_custom_app" "internal_wiki" {
-  name        = "internal-wiki"
-  description = "Internal wiki, matched by URL and port"
-  url         = "wiki.internal.example.com"
-  ip_protocol = "tcp"
+resource "graphiant_custom_app" "example" {
+  name        = "internal-erp"
+  description = "Internal ERP system"
+  ip_prefixes = ["10.10.0.0/16"]
 
   port_ranges = [
-    { lower = 443, upper = 443 },
+    { lower = 8443, upper = 8443 },
   ]
 }

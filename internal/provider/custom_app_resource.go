@@ -2,21 +2,16 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
-	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/resource_custom_app"
+	sdk "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
 
 var (
@@ -30,215 +25,183 @@ func NewCustomAppResource() resource.Resource {
 }
 
 type customAppResource struct {
-	client *gClient
+	pd *providerData
 }
 
-// portRangeModel mirrors manaV2GlobalAppPortRange.
-type portRangeModel struct {
+type customAppPortRangeModel struct {
 	Lower types.Int64 `tfsdk:"lower"`
 	Upper types.Int64 `tfsdk:"upper"`
 }
 
-// customAppResourceModel mirrors manaV2GlobalAppConfig together with the
-// reference counters only available from the list endpoint (see readInto).
-// Unlike site lists/content filters/app lists, the list endpoint here
-// returns the full config alongside those counters, so no second id-specific
-// call is needed to read this resource.
-type customAppResourceModel struct {
-	Id                    types.Int64      `tfsdk:"id"`
-	Name                  types.String     `tfsdk:"name"`
-	Description           types.String     `tfsdk:"description"`
-	Url                   types.String     `tfsdk:"url"`
-	IpProtocol            types.String     `tfsdk:"ip_protocol"`
-	IpLists               types.List       `tfsdk:"ip_lists"`
-	IpPrefixes            types.List       `tfsdk:"ip_prefixes"`
-	PortRanges            []portRangeModel `tfsdk:"port_ranges"`
-	AppListReferenceCount types.Int64      `tfsdk:"app_list_reference_count"`
-	PolicyReferenceCount  types.Int64      `tfsdk:"policy_reference_count"`
+var customAppPortRangeAttrTypes = map[string]attrType{
+	"lower": types.Int64Type,
+	"upper": types.Int64Type,
 }
 
-func (r *customAppResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+type customAppResourceModel struct {
+	ID          types.String `tfsdk:"id"`
+	Name        types.String `tfsdk:"name"`
+	Description types.String `tfsdk:"description"`
+	URL         types.String `tfsdk:"url"`
+	IPProtocol  types.String `tfsdk:"ip_protocol"`
+	IPLists     types.List   `tfsdk:"ip_lists"`
+	IPPrefixes  types.List   `tfsdk:"ip_prefixes"`
+	PortRanges  types.List   `tfsdk:"port_ranges"`
+}
+
+func (r *customAppResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_custom_app"
 }
 
-// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
-// resources.custom_app) via `make generate-schemas`; app_list_reference_count/
-// policy_reference_count are appended by hand since they're server-derived
-// counters, not part of the underlying app config the generated schema is
-// derived from.
-func (r *customAppResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = resource_custom_app.CustomAppResourceSchema(ctx)
-	resp.Schema.Description = "Manages a Graphiant custom app: a user-defined app match (by URL, IP, and/or port) referenced by app lists and policies."
-	resp.Schema.Attributes["id"] = schema.Int64Attribute{
-		Computed:    true,
-		Description: "Custom app identifier assigned by the Graphiant controller.",
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["name"] = schema.StringAttribute{
-		Required:    true,
-		Description: "Custom app name.",
-		Validators: []validator.String{
-			stringvalidator.LengthAtLeast(1),
-		},
-	}
-	resp.Schema.Attributes["app_list_reference_count"] = schema.Int64Attribute{
-		Computed:    true,
-		Description: "Number of app lists referencing this custom app.",
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["policy_reference_count"] = schema.Int64Attribute{
-		Computed:    true,
-		Description: "Number of policies referencing this custom app.",
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.UseStateForUnknown(),
+func (r *customAppResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "A custom application definition, matched by URL, IP lists/prefixes, and/or port ranges.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"name": schema.StringAttribute{
+				Required: true,
+			},
+			"description": schema.StringAttribute{
+				Optional: true,
+			},
+			"url": schema.StringAttribute{
+				Optional: true,
+			},
+			"ip_protocol": schema.StringAttribute{
+				Optional:    true,
+				Description: "Protocol enum value, as defined by the API (values are not enumerated in the SDK).",
+			},
+			"ip_lists": schema.ListAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"ip_prefixes": schema.ListAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"port_ranges": schema.ListNestedAttribute{
+				Optional: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"lower": schema.Int64Attribute{Required: true},
+						"upper": schema.Int64Attribute{Required: true},
+					},
+				},
+			},
 		},
 	}
 }
 
-func (r *customAppResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-	client, ok := req.ProviderData.(*gClient)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("expected *gClient, got: %T", req.ProviderData))
-		return
-	}
-	r.client = client
+func (r *customAppResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	r.pd = configurePD(req.ProviderData, &resp.Diagnostics)
 }
 
-func expandPortRanges(ranges []portRangeModel) []graphiant.ManaV2GlobalAppPortRange {
-	out := make([]graphiant.ManaV2GlobalAppPortRange, 0, len(ranges))
-	for _, pr := range ranges {
-		p := graphiant.NewManaV2GlobalAppPortRangeWithDefaults()
-		if v := int64Ptr(pr.Lower); v != nil {
-			lower := int32(*v)
-			p.SetLower(lower)
+func (m *customAppResourceModel) buildConfig(ctx context.Context) (*sdk.ManaV2GlobalAppConfig, diag.Diagnostics) {
+	cfg := &sdk.ManaV2GlobalAppConfig{
+		Name:        m.Name.ValueStringPointer(),
+		Description: m.Description.ValueStringPointer(),
+		Url:         m.URL.ValueStringPointer(),
+		IpProtocol:  m.IPProtocol.ValueStringPointer(),
+	}
+
+	if !m.IPLists.IsNull() && !m.IPLists.IsUnknown() {
+		diags := m.IPLists.ElementsAs(ctx, &cfg.IpLists, false)
+		if diags.HasError() {
+			return nil, diags
 		}
-		if v := int64Ptr(pr.Upper); v != nil {
-			upper := int32(*v)
-			p.SetUpper(upper)
-		}
-		out = append(out, *p)
 	}
-	return out
+	if !m.IPPrefixes.IsNull() && !m.IPPrefixes.IsUnknown() {
+		diags := m.IPPrefixes.ElementsAs(ctx, &cfg.IpPrefixes, false)
+		if diags.HasError() {
+			return nil, diags
+		}
+	}
+	if !m.PortRanges.IsNull() && !m.PortRanges.IsUnknown() {
+		var ranges []customAppPortRangeModel
+		diags := m.PortRanges.ElementsAs(ctx, &ranges, false)
+		if diags.HasError() {
+			return nil, diags
+		}
+		for _, pr := range ranges {
+			var lower, upper *int32
+			if v := pr.Lower.ValueInt64Pointer(); v != nil {
+				l := int32(*v)
+				lower = &l
+			}
+			if v := pr.Upper.ValueInt64Pointer(); v != nil {
+				u := int32(*v)
+				upper = &u
+			}
+			cfg.PortRanges = append(cfg.PortRanges, sdk.ManaV2GlobalAppPortRange{Lower: lower, Upper: upper})
+		}
+	}
+
+	return cfg, nil
 }
 
-func flattenPortRanges(ranges []graphiant.ManaV2GlobalAppPortRange) []portRangeModel {
-	out := make([]portRangeModel, 0, len(ranges))
-	for _, pr := range ranges {
-		out = append(out, portRangeModel{
-			Lower: int32Value(pr.Lower),
-			Upper: int32Value(pr.Upper),
+func (m *customAppResourceModel) applyConfig(ctx context.Context, cfg *sdk.ManaV2GlobalAppConfig) diag.Diagnostics {
+	m.Name = types.StringPointerValue(cfg.Name)
+	m.Description = types.StringPointerValue(cfg.Description)
+	m.URL = types.StringPointerValue(cfg.Url)
+	m.IPProtocol = types.StringPointerValue(cfg.IpProtocol)
+
+	ipLists, diags := types.ListValueFrom(ctx, types.StringType, cfg.IpLists)
+	if diags.HasError() {
+		return diags
+	}
+	m.IPLists = ipLists
+
+	ipPrefixes, diags2 := types.ListValueFrom(ctx, types.StringType, cfg.IpPrefixes)
+	if diags2.HasError() {
+		return diags2
+	}
+	m.IPPrefixes = ipPrefixes
+
+	ranges := make([]customAppPortRangeModel, 0, len(cfg.PortRanges))
+	for _, pr := range cfg.PortRanges {
+		var lower, upper *int64
+		if pr.Lower != nil {
+			l := int64(*pr.Lower)
+			lower = &l
+		}
+		if pr.Upper != nil {
+			u := int64(*pr.Upper)
+			upper = &u
+		}
+		ranges = append(ranges, customAppPortRangeModel{
+			Lower: types.Int64PointerValue(lower),
+			Upper: types.Int64PointerValue(upper),
 		})
 	}
-	return out
+	portRanges, diags3 := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: customAppPortRangeAttrTypes}, ranges)
+	if diags3.HasError() {
+		return diags3
+	}
+	m.PortRanges = portRanges
+
+	return nil
 }
 
-func (r *customAppResource) expandConfig(ctx context.Context, m *customAppResourceModel) (*graphiant.ManaV2GlobalAppConfig, diag.Diagnostics) {
+func (r *customAppResource) readByID(ctx context.Context, id int64) (*sdk.ManaV2GlobalAppConfig, bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	cfg := graphiant.NewManaV2GlobalAppConfigWithDefaults()
-
-	if v := strPtr(m.Name); v != nil {
-		cfg.SetName(*v)
-	}
-	if v := strPtr(m.Description); v != nil {
-		cfg.SetDescription(*v)
-	}
-	if v := strPtr(m.Url); v != nil {
-		cfg.SetUrl(*v)
-	}
-	if v := strPtr(m.IpProtocol); v != nil {
-		cfg.SetIpProtocol(*v)
-	}
-	if !m.IpLists.IsNull() && !m.IpLists.IsUnknown() {
-		var ipLists []string
-		diags.Append(m.IpLists.ElementsAs(ctx, &ipLists, false)...)
-		cfg.SetIpLists(ipLists)
-	}
-	if !m.IpPrefixes.IsNull() && !m.IpPrefixes.IsUnknown() {
-		var ipPrefixes []string
-		diags.Append(m.IpPrefixes.ElementsAs(ctx, &ipPrefixes, false)...)
-		cfg.SetIpPrefixes(ipPrefixes)
-	}
-	cfg.SetPortRanges(expandPortRanges(m.PortRanges))
-
-	return cfg, diags
-}
-
-// flatten fills m from a single list-endpoint entry, which uniquely among
-// this provider's split-read resources already carries the full config
-// (App/AppConfig) alongside the reference counters — no second id-specific
-// call is needed. See findCustomAppEntry.
-func (r *customAppResource) flatten(ctx context.Context, entry *graphiant.V1GlobalAppsCustomGetResponseEntry, m *customAppResourceModel) diag.Diagnostics {
-	var diags diag.Diagnostics
-
-	if entry.App != nil && entry.App.Identifier != nil {
-		m.Id = int64Value(entry.App.Identifier.Id)
-	}
-	m.AppListReferenceCount = int32Value(entry.AppListReferenceCount)
-	m.PolicyReferenceCount = int32Value(entry.PolicyReferenceCount)
-
-	cfg := entry.AppConfig
-	if cfg == nil {
-		cfg = graphiant.NewManaV2GlobalAppConfigWithDefaults()
-	}
-	m.Name = strValue(cfg.Name)
-	m.Description = strValue(cfg.Description)
-	m.Url = strValue(cfg.Url)
-	m.IpProtocol = strValue(cfg.IpProtocol)
-
-	ipLists, d := stringListValue(ctx, cfg.IpLists)
-	diags.Append(d...)
-	m.IpLists = ipLists
-
-	ipPrefixes, d := stringListValue(ctx, cfg.IpPrefixes)
-	diags.Append(d...)
-	m.IpPrefixes = ipPrefixes
-
-	m.PortRanges = flattenPortRanges(cfg.PortRanges)
-
-	return diags
-}
-
-// findCustomAppEntry looks up a custom app's list-endpoint entry by ID.
-// There is no dedicated "list one" filter, so this lists every custom app
-// and filters client-side, mirroring findSite/findGroup.
-func (r *customAppResource) findCustomAppEntry(ctx context.Context, id int64) (*graphiant.V1GlobalAppsCustomGetResponseEntry, error) {
-	out, httpRes, err := r.client.api.DefaultAPI.V1GlobalAppsCustomGet(ctx).Authorization(r.client.authHeader()).Execute()
-	defer closeBody(httpRes)
+	out, httpResp, err := r.pd.api.DefaultAPI.V1GlobalAppsCustomAppIdGet(ctx, id).Authorization(r.pd.token).Execute()
 	if err != nil {
-		return nil, err
-	}
-	if out == nil {
-		return nil, nil
-	}
-	for _, entry := range out.GetEntries() {
-		if entry.App != nil && entry.App.Identifier != nil && entry.App.Identifier.Id != nil && *entry.App.Identifier.Id == id {
-			return &entry, nil
+		if isNotFound(httpResp) {
+			closeBody(httpResp)
+			return nil, false, diags
 		}
+		closeBody(httpResp)
+		diags.AddError("Unable to read custom app", apiErrorDetail(err))
+		return nil, false, diags
 	}
-	return nil, nil
-}
-
-func (r *customAppResource) readInto(ctx context.Context, id int64, m *customAppResourceModel) (bool, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	entry, err := r.findCustomAppEntry(ctx, id)
-	if err != nil {
-		diags.AddError("Error reading custom app", apiErrorDetail(err))
-		return false, diags
+	closeBody(httpResp)
+	if out == nil || out.AppConfig == nil {
+		return nil, false, diags
 	}
-	if entry == nil {
-		return false, diags
-	}
-
-	diags.Append(r.flatten(ctx, entry, m)...)
-	return true, diags
+	return out.AppConfig, true, diags
 }
 
 func (r *customAppResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -248,40 +211,44 @@ func (r *customAppResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	tflog.Debug(ctx, "creating custom app", map[string]any{"name": plan.Name.ValueString()})
-
-	cfg, diags := r.expandConfig(ctx, &plan)
+	cfg, diags := plan.buildConfig(ctx)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	body := graphiant.NewV1GlobalAppsCustomPostRequestWithDefaults()
-	body.SetAppConfig(*cfg)
-
-	out, httpRes, err := r.client.api.DefaultAPI.V1GlobalAppsCustomPost(ctx).Authorization(r.client.authHeader()).V1GlobalAppsCustomPostRequest(*body).Execute()
-	defer closeBody(httpRes)
+	body := sdk.V1GlobalAppsCustomPostRequest{AppConfig: cfg}
+	out, httpResp, err := r.pd.api.DefaultAPI.V1GlobalAppsCustomPost(ctx).
+		Authorization(r.pd.token).
+		V1GlobalAppsCustomPostRequest(body).
+		Execute()
+	closeBody(httpResp)
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating custom app", apiErrorDetail(err))
+		resp.Diagnostics.AddError("Unable to create custom app", apiErrorDetail(err))
 		return
 	}
 	if out == nil || out.AppIdentifier == nil || out.AppIdentifier.Id == nil {
-		resp.Diagnostics.AddError("Error creating custom app", "the API did not return the created custom app's id")
+		resp.Diagnostics.AddError("Unable to create custom app", "API returned an empty response")
 		return
 	}
 
-	found, diags := r.readInto(ctx, *out.AppIdentifier.Id, &plan)
-	resp.Diagnostics.Append(diags...)
+	created, found, diags2 := r.readByID(ctx, *out.AppIdentifier.Id)
+	resp.Diagnostics.Append(diags2...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	if !found {
-		resp.Diagnostics.AddError("Error creating custom app", "the custom app was created but could not be found afterwards")
+		resp.Diagnostics.AddError("Unable to read created custom app", "custom app was created but could not be read back")
+		return
+	}
+
+	plan.ID = types.StringValue(int64ID(*out.AppIdentifier.Id))
+	resp.Diagnostics.Append(plan.applyConfig(ctx, created)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-	tflog.Trace(ctx, "created custom app", map[string]any{"id": plan.Id.ValueInt64()})
 }
 
 func (r *customAppResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -291,16 +258,24 @@ func (r *customAppResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	tflog.Debug(ctx, "reading custom app", map[string]any{"id": state.Id.ValueInt64()})
+	id, err := parseInt64ID(state.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid custom app id", err.Error())
+		return
+	}
 
-	found, diags := r.readInto(ctx, state.Id.ValueInt64(), &state)
+	cfg, found, diags := r.readByID(ctx, id)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	if !found {
-		tflog.Debug(ctx, "custom app no longer exists, removing from state", map[string]any{"id": state.Id.ValueInt64()})
 		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	resp.Diagnostics.Append(state.applyConfig(ctx, cfg)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -308,43 +283,51 @@ func (r *customAppResource) Read(ctx context.Context, req resource.ReadRequest, 
 }
 
 func (r *customAppResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state customAppResourceModel
+	var plan customAppResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	tflog.Debug(ctx, "updating custom app", map[string]any{"id": state.Id.ValueInt64()})
-
-	cfg, diags := r.expandConfig(ctx, &plan)
+	cfg, diags := plan.buildConfig(ctx)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	body := graphiant.NewV1GlobalAppsCustomAppIdPutRequestWithDefaults()
-	body.SetAppConfig(*cfg)
-
-	_, httpRes, err := r.client.api.DefaultAPI.V1GlobalAppsCustomAppIdPut(ctx, state.Id.ValueInt64()).Authorization(r.client.authHeader()).V1GlobalAppsCustomAppIdPutRequest(*body).Execute()
-	defer closeBody(httpRes)
+	id, err := parseInt64ID(plan.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error updating custom app", apiErrorDetail(err))
+		resp.Diagnostics.AddError("Invalid custom app id", err.Error())
 		return
 	}
 
-	found, diags := r.readInto(ctx, state.Id.ValueInt64(), &plan)
-	resp.Diagnostics.Append(diags...)
+	body := sdk.V1GlobalAppsCustomAppIdPutRequest{AppConfig: cfg}
+	_, httpResp, err := r.pd.api.DefaultAPI.V1GlobalAppsCustomAppIdPut(ctx, id).
+		Authorization(r.pd.token).
+		V1GlobalAppsCustomAppIdPutRequest(body).
+		Execute()
+	closeBody(httpResp)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to update custom app", apiErrorDetail(err))
+		return
+	}
+
+	updated, found, diags2 := r.readByID(ctx, id)
+	resp.Diagnostics.Append(diags2...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	if !found {
-		resp.Diagnostics.AddError("Error updating custom app", "the custom app was updated but could not be found afterwards")
+		resp.Diagnostics.AddError("Unable to update custom app", "custom app no longer exists")
+		return
+	}
+
+	resp.Diagnostics.Append(plan.applyConfig(ctx, updated)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-	tflog.Trace(ctx, "updated custom app", map[string]any{"id": plan.Id.ValueInt64()})
 }
 
 func (r *customAppResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -354,12 +337,16 @@ func (r *customAppResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 
-	tflog.Debug(ctx, "deleting custom app", map[string]any{"id": state.Id.ValueInt64()})
-
-	_, httpRes, err := r.client.api.DefaultAPI.V1GlobalAppsCustomAppIdDelete(ctx, state.Id.ValueInt64()).Authorization(r.client.authHeader()).Execute()
-	defer closeBody(httpRes)
+	id, err := parseInt64ID(state.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error deleting custom app", apiErrorDetail(err))
+		resp.Diagnostics.AddError("Invalid custom app id", err.Error())
+		return
+	}
+
+	_, httpResp, err := r.pd.api.DefaultAPI.V1GlobalAppsCustomAppIdDelete(ctx, id).Authorization(r.pd.token).Execute()
+	closeBody(httpResp)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to delete custom app", apiErrorDetail(err))
 	}
 }
 

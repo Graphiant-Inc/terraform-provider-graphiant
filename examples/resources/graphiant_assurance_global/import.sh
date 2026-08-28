@@ -1,0 +1,1 @@
+terraform import graphiant_assurance_global.critical_apps <assurance_id>

@@ -1,0 +1,1 @@
+terraform import graphiant_assurance_classified_application.internal_erp <classification_entry_id>

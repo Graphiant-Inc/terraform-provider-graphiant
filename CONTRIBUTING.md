@@ -46,44 +46,44 @@ Thank you for your interest in contributing!
 ## Project Layout
 
 - `main.go` — provider entrypoint (`providerserver.Serve`)
-- `internal/provider/provider.go` — provider schema, configuration, and the
-  `Resources()` / `DataSources()` registries
-- `internal/provider/client.go` — wraps `graphiant-sdk-go`'s `*APIClient`
-  together with the resolved bearer token (`gClient`)
+- `internal/provider/provider.go` — provider schema, `Configure` (auth
+  resolution), and the `Resources()` / `DataSources()` registries
+- `internal/provider/client.go` — `providerData` (the SDK `*APIClient` plus
+  the resolved bearer token) and the login/host-resolution helpers
+- `internal/provider/util.go` — id conversion, response-body-close, and
+  `providerData`-extraction helpers shared across every resource/data source
+- `internal/provider/errors.go` — `apiErrorDetail`, which unwraps
+  `graphiant_sdk.GenericOpenAPIError` for a diagnostic-friendly message
 - `internal/provider/*_resource.go` — one file per managed resource
-  (`site`, `group`, `user`, `site_list`, `content_filter`, `app_list`,
-  `custom_app`)
-- `internal/provider/*_data_source.go` — one file per data source
-  (singular = lookup by ID, plural = list all)
-- `internal/provider/util.go`, `location.go`, `permissions.go` — shared
-  conversion helpers reused across resources
-- `internal/provider/generated/` — schemas and model structs generated from
-  `api/graphiant_api_docs_v26.7.0.json` via `make generate-schemas`
-  (**do not hand-edit**, headed `DO NOT EDIT`); see
-  [Adding a New Resource or Data Source](#adding-a-new-resource-or-data-source)
-- `internal/provider/acctest_test.go` — shared acceptance-test helpers
-  (`testAccProtoV6ProviderFactories`, `testAccPreCheck`)
-- `internal/provider/*_test.go` (`TestAcc*` functions) — acceptance tests
-  against a live Graphiant API; see [Acceptance tests](#acceptance-tests)
+  (`site`, `user`, `group`, `app_list`, `content_filter`, `custom_app`,
+  `site_list`), each self-contained: schema, model struct,
+  `Create`/`Read`/`Update`/`Delete`, `ImportState`
+- `internal/provider/device_data_source.go` — the one data source
+  (`graphiant_device`)
+- `internal/provider/provider_test.go` — schema-validation unit tests
 - `examples/` — runnable `.tf` config per resource/data source, in the layout
   `terraform-plugin-docs`/the Terraform Registry expect
 - `docs/` — generated attribute reference; **do not hand-edit**, run
   `make docs` instead (see [Documentation](#documentation) below)
 
+There is no codegen step. Each resource maps Terraform schema fields to
+`graphiant-sdk-go` request/response structs by hand — see
+[Adding a New Resource or Data Source](#adding-a-new-resource-or-data-source).
+
 ## API Coverage
 
-`graphiant-sdk-go` exposes roughly 525 endpoints; this provider deliberately
-covers a subset of them. A resource is only added for an endpoint (or small
-group of endpoints) that supports full create/read/delete — ideally
-create/read/update/delete — lifecycle management of a persistent object.
-Endpoints that are actions (e.g. resetting an IPsec session, approving a
-device return), analytics/telemetry queries (bandwidth trackers, top
-talkers, flow reports), session/account self-service (login, MFA, SAML,
-password), or things like AI assistant conversations and audit/activity logs
-are **not** modeled as resources — forcing them into Terraform's
-create/read/update/delete resource model produces broken or misleading
-resources (e.g. a "resource" with no real update or delete semantics). This
-follows HashiCorp's own
+`graphiant-sdk-go` exposes roughly 1,050 endpoints; this provider
+deliberately covers a small subset of them. A resource is only added for an
+endpoint (or small group of endpoints) that supports full create/read/delete
+— ideally create/read/update/delete — lifecycle management of a persistent
+object. Endpoints that are actions (e.g. resetting an IPsec session,
+approving a device return), analytics/telemetry queries (bandwidth
+trackers, top talkers, flow reports), session/account self-service (login,
+MFA, SAML, password), or things like AI assistant conversations and
+audit/activity logs are **not** modeled as resources — forcing them into
+Terraform's create/read/update/delete resource model produces broken or
+misleading resources (e.g. a "resource" with no real update or delete
+semantics). This follows HashiCorp's own
 [provider design principles](https://developer.hashicorp.com/terraform/plugin/best-practices/hashicorp-provider-design-principles)
 ("single API object per resource") and its guidance that ephemeral resources
 and provider functions — not resources — exist for things that aren't
@@ -92,100 +92,191 @@ long-lived state.
 **Covered today:**
 
 - IAM: `graphiant_site`, `graphiant_group`, `graphiant_user`
-- Devices: read-only (`graphiant_device`/`graphiant_devices`) — this
-  provider does not manage device network configuration
+- Devices: read-only (`graphiant_device`) — this provider does not manage
+  device network configuration
 - Global catalog objects: `graphiant_site_list`, `graphiant_content_filter`,
   `graphiant_app_list`, `graphiant_custom_app`
+- Enterprise/MSP: `graphiant_enterprise` (credits/billing are fields on this
+  resource — there is no standalone credits resource in the API)
+- Gateway service: `graphiant_gateway` (core + single-peer IPsec only —
+  cloud-provider gateway types and multi-peer IPsec are not exposed)
+- Data exchange: `graphiant_public_vif` (Public VIF), `graphiant_extranet`
+  (local/intra-tenant), and the B2B partner workflow — `graphiant_b2b_producer_service`
+  → `graphiant_b2b_customer` → `graphiant_b2b_match` → `graphiant_b2b_consumer`
+  — built against the newer singular `V1ExtranetB2b*` API generation, not the
+  older plural `V1ExtranetsB2b*`/`Peering` one (see git history for why: the
+  newer generation is the only one with a peer-to-peer/client-to-server
+  distinction)
+- Software upgrades: `graphiant_software_rollout` (rollout campaigns).
+  Per-device ad hoc upgrade actions (`V1DevicesUpgradeSchedulePut`/
+  `CancelPut`) are not exposed — they're fire-and-forget with no persisted
+  object to model as a resource
+- Device lifecycle actions: `graphiant_device_bringup` (activation),
+  `graphiant_device_decommission` (hardware-return workflow, keyed by serial
+  number). Both are explicitly action-shaped, not object CRUD — see their
+  schema `Description`s for what Delete does and doesn't do
+- Data assurance: `graphiant_assurance_global` (SLA assurance config),
+  `graphiant_assurance_classified_application` (app classification rules).
+  ~20 sibling analytics endpoints in this domain (Enterprisesummary,
+  Topology*, Bucket*, Scoredetails, AiAdoptionSummary, etc.) are deliberately
+  not exposed — see "API Coverage" below.
+- Alerts: `graphiant_alert_integration` (delivery integrations, full CRUD),
+  `graphiant_alert_notification` (notification routing config — create
+  returns no ID, same list-and-match pattern as `graphiant_enterprise`/
+  `graphiant_group`; `rule_id_list` is force-new since the update endpoint
+  has no field for it)
+- Routing: `graphiant_route_tag` (create+delete only, no update endpoint
+  exists; Read only confirms the tag id still exists in the API's recursive
+  tag tree — it can't reconstruct level_zero/one/two from that tree, so
+  those are preserved from configuration rather than refreshed),
+  `graphiant_lan_segment` (create+delete only, same reasoning)
+- Device config: `graphiant_device_config` — pushes `maintenance_mode` and,
+  on edge devices, the `*_enabled` toggles via `V1DevicesDeviceIdConfigPut`,
+  the same endpoint `graphiant-playbooks`' 17 device-level Ansible modules
+  use for BGP/interfaces/NAT policy/traffic policy/site-to-site VPN/etc. —
+  see "API Coverage" below for why those other domains aren't covered by
+  this resource. The PUT is an async job, polled via
+  `V1DevicesDeviceIdJobsJobIdGet` until `CompletedAt` is set (`JobState`'s
+  valid values are undocumented, so string-matching it would be a guess).
+- Read-only data sources covering the read side of edge/site monitoring,
+  alerts, troubleshooting, and routing: `graphiant_edges`,
+  `graphiant_site_devices` (the closest real proxy for "site health" — see
+  below), `graphiant_alert_records`, `graphiant_alert_rules`,
+  `graphiant_assurance_flex_algos`, `graphiant_assurance_dnsproxy_entries`
+  (read-only rather than a resource — see below), `graphiant_troubleshooting_device`,
+  `graphiant_troubleshooting_site`, `graphiant_routing_policy`,
+  `graphiant_prefix_set`, `graphiant_domain_categories`, `graphiant_regions`,
+  `graphiant_ipsec_profiles`
 
-**Confirmed full-CRUD candidates not yet implemented** (verified against the
-SDK's actual request/response models, not just endpoint names — see git
-history/PR discussion for the audit): `pvif` (physical/virtual interfaces)
-and `gateways` (note: gateway update/delete take the id in the request body
-rather than the URL path — a shape worth designing carefully). Larger,
-multi-object domains needing more design work before implementation:
-`extranets`/`extranet/b2b/*` (a multi-object B2B workflow: customers,
-consumers, producers, matches) and `enterprises`/`enterprise` (multi-tenant
-admin). Device network configuration (interfaces, circuits, routing) is
-configured via a single monolithic `PUT /v1/devices/{deviceId}/config`
-rather than per-object endpoints, which changes the resource design
-significantly and needs that request body's model read in full before any
-schema is designed.
+**Deliberately not implemented:**
 
-**Ruled out** (endpoint exists but doesn't support full CRUD in the current
-API — e.g. create-only with no way to read back or delete): global
-`prefix-sets`, `routing-policies`, `traffic-policies`, `ntps`, `snmps`,
-`syslogs`, `ipfix` (all POST-only); `ipsec-profile` (GET-only, a data-source
-candidate at most if ever needed).
+- Site health as a real endpoint — it doesn't exist. `V1SitesDetailsGet`'s
+  doc comment says "site wide status" but its response model has no status
+  field at all (confirmed against the OpenAPI spec, not just the generated
+  Go struct — treat doc comments in this SDK as unreliable, `route_tag`'s
+  own delete/read endpoints have a similar doc-comment/behavior mismatch,
+  confirmed via `localVarHTTPMethod` and the response model instead).
+  `graphiant_site_devices` is the closest real proxy (per-device
+  maintenance/VRRP state), explicitly documented as such.
+- `graphiant_assurance_dnsproxy_entry` as a resource — its delete endpoint
+  (`V2AssuranceDeleteDnsproxyEntryDelete`) has no path/query/body parameter
+  identifying which entry to delete at all (verified by reading the
+  generated request-construction code directly, not just the builder
+  methods) — implementing Create without a working Delete would let
+  Terraform-managed entries leak permanently. `graphiant_assurance_dnsproxy_entries`
+  (a data source) is the honest alternative.
+- The ~20 time-windowed data-assurance analytics endpoints — a Terraform
+  data source is refreshed on every plan; a report over a caller-supplied
+  historical time range produces diffs unrelated to actual infrastructure
+  drift, so these don't fit the model regardless of how useful the
+  underlying report is.
+- Alert rule enable/disable, alert allowlist/mutelist entries, assurance
+  user reports, AI adoption approve entries — narrower sub-domains with
+  either metrics-drift risk (approve entries mix live usage stats into a
+  config object) or report-job semantics, deferred rather than rushed.
+- All async diagnostic workflows (ping/traceroute/speedtest/packet-capture/
+  debug-archive — each needs a token- or job-id-based polling design this
+  provider doesn't attempt yet) and all fire-and-forget diagnostic actions
+  (BGP reset, clear ARP, interface reset, reboot, reset IPsec session — no
+  result to read back, matches the "don't force actions into the model"
+  principle above). Endpoints that are synchronous but still trigger a live
+  side effect on every read (ping, OTP passcode generation) are excluded
+  too — re-running a live network probe on every `terraform plan` is a bad
+  data-source fit regardless of sync/async.
+- OSPF RIB, BGP neighbor detail/counters, and BGP/VRF route-count endpoints —
+  real and read-only, but narrower, and one response shape
+  (`V1DeviceRoutingBgpNbrsDetailsGet`) is unusually thin relative to its
+  name per a research pass — left as a follow-up rather than built on an
+  unconfirmed assumption.
+- `V1GlobalTrafficPoliciesPost` — same read-only lookup-by-id shape as
+  prefix-sets/routing-policies, but its request body wasn't fully verified
+  before this pass closed — skip rather than guess.
 
-When proposing a new resource, check the actual generated model structs
-(`model_*.go` in `graphiant-sdk-go`) for the relevant endpoints before
-assuming an endpoint is CRUD-capable — endpoint *names* are not a reliable
-signal (see `pvif`/`gateways` above for confirmed-good shapes vs. the
-POST-only domains above that look like resources but aren't).
+- The other 16 device-config sub-domains behind `V1DevicesDeviceIdConfigPut`
+  — BGP, interfaces, LAG, DHCP relay, NTP, OSPFv2, static routes, VRRP,
+  MACsec, NAT policy, security policy, traffic policy, site-to-site VPN,
+  device system (beyond `region`), edge services (beyond the `*_enabled`
+  toggles), prefix/port lists. Each is a large nested map on
+  `ManaV2CoreDeviceConfig`/`ManaV2EdgeDeviceConfig` that hasn't been
+  individually verified; `graphiant_device_config` only covers the fields
+  confirmed to round-trip safely through `ManaV2Device` on read
+  (`maintenance_mode` and the edge `*_enabled` booleans) — building any of
+  these sub-domains as their own resource needs its own dedicated
+  field-by-field research pass, each comparable in size to the B2B partner
+  workflow.
+- Device "staging" and "deactivation" — not distinct concepts anywhere in
+  this SDK (confirmed by exhaustive grep); don't invent an endpoint mapping
+  that isn't there.
+- The older `V1ExtranetsB2b*`/`Peering` B2B API generation — superseded by
+  `V1ExtranetB2b*`, which this provider uses instead.
+
+Everything else — LAN segments, most nested sub-configs on the resources
+above (enterprise prefix sets, cloud-provider gateway types, several BGP
+neighbor sub-fields — each is called out in its resource's schema
+`Description`), and the alert/assurance/diagnostics/routing sub-domains
+listed above as deliberately not implemented — is not covered. Before
+proposing a new resource, check the actual `model_*.go` structs and
+`Api*Execute` return signatures for the relevant endpoints in
+`graphiant-sdk-go` — endpoint *names* are not a reliable signal for whether
+something is genuinely CRUD-capable (e.g. several `Put`/`Delete` endpoints
+return `map[string]interface{}` instead of a typed body, some domains use
+four different id-passing conventions across their own four CRUD endpoints —
+see `gateway_resource.go` — and a few domains are POST-only with no way to
+read back or delete what was created).
 
 ## Adding a New Resource or Data Source
 
-Schemas and model structs are **generated from the OpenAPI spec**
-(`api/graphiant_api_docs_v26.7.0.json`) via `make generate-schemas`
-(`api/generate.sh`) — see `api/generator_config.yml` for the path/method
-mapping per resource/data source. Everything under
-`internal/provider/generated/` is regenerated output; don't hand-edit it.
-CRUD logic still hand-calls `graphiant-sdk-go` directly (the generator
-doesn't produce a client or any Create/Read/Update/Delete code at all, only
-schema + model types) — see `internal/provider/*_resource.go` for the
-pattern. When adding a new resource or data source:
+There's no codegen step — write the resource file directly against
+`graphiant-sdk-go`. Use an existing resource as the template (`site_resource.go`
+for a resource with list-scan Read and nested location/route_tag blocks,
+`app_list_resource.go` or `custom_app_resource.go` for the common
+Post-returns-identifier / Get-by-id-for-full-config shape,
+`content_filter_resource.go` for cross-field validators, `group_resource.go`
+for a resource that also manages a related sub-collection). When adding one:
 
-1. Add its `create`/`read`/`update`/`delete` (or `read`-only, for a data
-   source) path/method mapping to `api/generator_config.yml`. If the
-   request/response body wraps the real fields in an envelope object, or the
-   endpoint has no genuine single-object read (see `api/augment_spec.py`'s
-   module docstring for why this comes up and how it's handled), extend
-   `api/augment_spec.py` rather than fighting the generator — it produces a
-   codegen-only derived spec used solely as generator input.
-2. Run `make generate-schemas`. Diff the result — this toolchain has known
-   rough edges (see comments in `api/patch_ir.py` and
-   `api/dedupe_generated.py`), so treat a clean run as something to verify,
-   not assume. In particular: `generator_config.yml` can't express plan
-   modifiers, `RequiresReplace`, or computed/optional overrides — add those
-   to `api/patch_ir.py` instead, which hand-patches the intermediate
-   representation between the OpenAPI→IR and IR→Go steps.
-3. Write the resource/data source Go file: a `Schema()` that calls into the
-   generated package and layers any hand-patched attributes (server-derived
-   counters not present in the generated response, plan modifiers/validators
-   not expressible via config) on top — see `app_list_resource.go` for the
-   reference pattern — plus `Create`/`Read`/`Update`/`Delete` calling
-   `graphiant-sdk-go` as normal. The framework's struct reflection works off
-   the raw `tftypes` value, so a plain `tfsdk`-tagged model struct works
-   fine as the destination regardless of the generated schema's `CustomType`
-   wrapper — you don't need the generated nested-object value types unless
-   you want their typed accessors.
-4. If the API has no get-by-id endpoint, follow `findSite`/`findGroup`'s
-   pattern of listing and filtering client-side in `Read`.
-5. If a write endpoint doesn't return the created/updated object (as with
-   `V1GroupsPut`/`V1UsersPut`), read it back afterward as `Create`/`Update`
-   already do for groups and users.
+1. Read the exact request/response struct fields and `Api*Execute` return
+   signature for each endpoint you'll call directly from `graphiant-sdk-go`'s
+   `model_*.go` files and `api_default.go` — don't assume field names or
+   return arity from the endpoint name; several endpoints in this SDK return
+   `map[string]interface{}` instead of a typed response, and some CRUD
+   endpoints are noticeably asymmetric (e.g. a resource's update body using a
+   different field name than its create body for the same concept, or a
+   get-by-id response omitting a field only the list response returns).
+2. Define a `tfsdk`-tagged model struct and a `Schema()`. Nested objects the
+   API returns/accepts as their own struct become a `SingleNestedBlock` (if
+   the API always expects the object embedded, like a site's `location`) or
+   a `SingleNestedAttribute`/`ListNestedAttribute` (if it needs to be
+   assignable as a value, e.g. inside another list). A `NestedAttributeObject`
+   (used by `ListNestedAttribute`) only supports `Attributes`, not `Blocks`.
+3. Write `Create`/`Read`/`Update`/`Delete` calling `graphiant-sdk-go`
+   directly — chain `.Authorization(pd.token)` onto every request builder
+   (there's no client-level "set once" auth in this SDK), and always
+   `closeBody(httpResp)` (`util.go`) on the raw response.
+4. If the API has no get-by-id endpoint, follow `findSite`'s pattern of
+   listing and filtering client-side in `Read`. If a write endpoint doesn't
+   return the created/updated object (`V1GroupsPut`/`V1UsersPut`), read it
+   back afterward the way `group_resource.go`/`user_resource.go` do. If a
+   field is genuinely immutable (no update endpoint touches it — see
+   `user_resource.go`, where nearly everything is `RequiresReplace`), mark
+   it with `stringplanmodifier.RequiresReplace()` rather than pretending
+   `Update` can change it.
+5. On a **resource** (not data source) schema, add
+   `stringplanmodifier.UseStateForUnknown()` to `id` and any other
+   `Computed`-only attribute that doesn't change as a side effect of
+   updating other fields — otherwise it shows `(known after apply)` on
+   every single plan, not just when something relevant actually changed.
 6. Register the new `New*Resource`/`New*DataSource` constructor in
    `provider.go`'s `Resources()`/`DataSources()`.
-7. `TestResourceSchemas`/`TestDataSourceSchemas` iterate the registries in
-   `provider.go`, so the new resource/data source is covered automatically —
-   no changes needed there. Do add dedicated tests if its expand/flatten
-   logic is non-trivial.
-8. Add an acceptance test (see [Acceptance tests](#acceptance-tests) below)
-   and an example config:
-   - Resource: `examples/resources/graphiant_<name>/resource.tf`, plus
-     `import.sh` if it implements `ResourceWithImportState`.
-   - Data source: `examples/data-sources/graphiant_<name>/data-source.tf`.
-9. Run `make docs` to regenerate `docs/` from the new schema and example —
+   `TestResourceSchemas`/`TestDataSourceSchemas` (`provider_test.go`) then
+   cover it automatically — no test changes needed unless it has
+   non-trivial conversion logic worth a dedicated unit test.
+7. Add an example config: `examples/resources/graphiant_<name>/resource.tf`
+   (plus `import.sh` if it implements `ResourceWithImportState`), or
+   `examples/data-sources/graphiant_<name>/data-source.tf`.
+8. Run `make docs` to regenerate `docs/` from the new schema and example —
    CI's `docs` job (`lint.yml`) fails the PR otherwise.
-
-Exception: `graphiant_device`/`graphiant_devices` are hand-written, not
-generated — the real API schema for a device is a ~45-field, deeply-nested
-object that reuses attribute names (e.g. `rules`, `bgp`) at different
-nesting depths, which hits an unresolved upstream bug where
-`tfplugingen-framework` emits colliding duplicate Go types for them (see
-`api/generator_config.yml`'s comment for links). Don't attempt to bring
-these into codegen without checking whether that upstream issue has been
-fixed.
+9. Consider adding an acceptance test — see [Testing](#testing) below; this
+   provider doesn't have any yet, so there's no existing pattern to copy.
 
 ## Testing
 
@@ -202,45 +293,63 @@ helper that does non-trivial conversion.
 
 ### Acceptance tests
 
-`internal/provider/*_test.go` has `terraform-plugin-testing`-based acceptance
-tests (`TestAccSiteResource`, `TestAccGroupResource`, `TestAccUserResource`,
-`TestAccSiteListResource`, `TestAccContentFilterResource`,
-`TestAccAppListResource`, `TestAccCustomAppResource`,
-`TestAccDevicesDataSource`) that exercise a live Graphiant API: full
-create → read → update → import cycles for each resource, plus their
-associated data sources. They're gated the same way
-[`graphiant-sdk-go`](https://github.com/Graphiant-Inc/graphiant-sdk-go/blob/main/CONTRIBUTING.md#environment-variables-for-tests)'s
-tests are:
-
-- `resource.Test`'s built-in `TF_ACC=1` requirement (unset → self-skip), and
-- `testAccPreCheck` (`internal/provider/acctest_test.go`), which additionally
-  self-skips unless `GRAPHIANT_ACCESS_TOKEN`, or both `GRAPHIANT_USERNAME` and
-  `GRAPHIANT_PASSWORD`, are set.
-
-Run them locally against a real (ideally non-production) tenant:
+Every resource and data source has a `TestAcc<Name>Resource` /
+`TestAcc<Name>DataSource` function in `internal/provider/*_test.go`, using the
+shared `testAccProtoV6ProviderFactories` / `testAccPreCheck` helpers in
+`acctest_test.go`. They're gated on `resource.Test`'s built-in `TF_ACC=1`
+requirement plus a `PreCheck` that skips unless credentials
+(`GRAPHIANT_ACCESS_TOKEN`, or `GRAPHIANT_USERNAME`+`GRAPHIANT_PASSWORD`) are
+set:
 
 ```bash
-export GRAPHIANT_ACCESS_TOKEN="..."   # or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD
-export GRAPHIANT_API_HOST="https://api.graphiant.com"  # optional, defaults as the provider does
-make testacc
-
-# Or a single resource's test:
-TF_ACC=1 go test ./internal/provider/ -run TestAccSiteResource -v -timeout 30m
+export TF_ACC=1
+export GRAPHIANT_ACCESS_TOKEN="..."
+go test ./internal/provider/... -run TestAcc -v
 ```
 
-Acceptance tests create and delete real objects (named with
-`acctest.RandomWithPrefix`, e.g. `tf-acc-site-<random>`) — never point them at
-a production tenant you can't afford to have test data appear in
-transiently. `TestAccDevicesDataSource` only reads (devices can't be created
-by this provider) and doesn't assert a specific count.
+Without `TF_ACC=1` (e.g. plain `go test ./...` in CI's `test` job), every
+`TestAcc*` skips immediately and touches nothing.
 
-**Adding acceptance tests for a new resource:** follow the pattern in
-`site_resource_test.go` — a `TestAcc<Name>Resource` function with
-`resource.Test`, `PreCheck: func() { testAccPreCheck(t) }`,
-`ProtoV6ProviderFactories: testAccProtoV6ProviderFactories`, and steps for
-create+read, `ImportState`, and an in-place update. Include the resource's
-paired data source(s) in the create step's config and checks, as
-`site_resource_test.go` does with `data.graphiant_site`/`data.graphiant_sites`.
+When adding a new resource or data source, add a matching acceptance test
+following the existing pattern: a `TestAcc<Name>Resource` function using
+`resource.Test`, with steps for create+read, `ImportState` (if the resource
+implements `ResourceWithImportState` — use a composite id via
+`ImportStateIdFunc` if `Read` needs more than the primary id, following
+`alert_integration_resource_test.go`/`device_config_resource_test.go`), and
+an in-place update. Acceptance tests create and delete real objects against a
+live tenant — name them with a clearly identifiable random prefix (e.g. via
+`acctest.RandomWithPrefix`) and never point them at a production tenant you
+can't afford to have test data appear in transiently. Tests that need a
+tenant-specific id with no natural way to create one in-test (device/site/
+region ids, etc.) use a documented placeholder value — call this out in a
+comment and expect contributors to adjust it for their own test tenant.
+
+### Sanity check (no Terraform required)
+
+Before building the provider and setting up a dev override, `cmd/sanity`
+gives a quick, Terraform-independent check that credentials and connectivity
+work: it resolves auth exactly like the provider's own `Configure` does
+(`GRAPHIANT_ACCESS_TOKEN`, or `GRAPHIANT_USERNAME`+`GRAPHIANT_PASSWORD`, and
+optionally `GRAPHIANT_API_HOST`/`GRAPHIANT_HOST`), logs in, and lists the
+current edge summary:
+
+```bash
+export GRAPHIANT_ACCESS_TOKEN="..."
+make sanity
+```
+
+For a check that goes through the real provider binary and the real
+Terraform plugin protocol instead of talking to the SDK directly,
+`scripts/terraform-sanity.sh` builds the provider, wires up a throwaway
+[dev override](https://developer.hashicorp.com/terraform/cli/config/config-file#development-overrides-for-provider-developers)
+(without touching your real `~/.terraformrc`), and runs
+`scripts/terraform-sanity/main.tf` — the same `graphiant_edges` lookup, but
+through `terraform apply`:
+
+```bash
+export GRAPHIANT_ACCESS_TOKEN="..."
+make sanity-tf
+```
 
 ### Manual testing against a real Graphiant tenant
 
@@ -289,34 +398,24 @@ produces a diff, so `docs/` can't silently drift from the schema or examples.
 
 - Follow [Effective Go](https://go.dev/doc/effective_go) guidelines.
 - Use `gofmt` for formatting (checked via `make fmt-check`).
-- Keep resource/data-source files symmetric with their siblings (e.g.
-  `site_resource.go` and `site_data_source.go` should model the same fields
-  the same way) so the provider stays predictable to extend.
+- Keep resource files structurally consistent with their siblings (schema →
+  model struct → `build*`/`apply*` conversion helpers → CRUD →
+  `ImportState`) so the provider stays predictable to extend.
 - Don't add attributes, resources, or data sources speculatively — only for
   API surface the provider actually needs to expose.
 - Handle errors explicitly and surface them via `resp.Diagnostics`, never by
-  panicking or silently dropping them. Use `apiErrorDetail(err)` (`util.go`)
+  panicking or silently dropping them. Use `apiErrorDetail(err)` (`errors.go`)
   rather than `err.Error()` for SDK call failures — `graphiant-sdk-go`'s
   `GenericOpenAPIError.Error()` only returns the HTTP status line (e.g.
   `"400 Bad Request"`); `apiErrorDetail` appends the actual response body.
-- Close every SDK response body with `defer closeBody(httpRes)` (`util.go`),
-  not `defer httpRes.Body.Close()` directly — the latter trips
-  `golangci-lint`'s `errcheck` and there's no reason to inline the nil check
-  at every call site.
-- On a **resource** (not data source) schema, add a plan modifier to every
-  `Computed`-only attribute unless its value is a deterministic side effect
-  of that resource's own `Update`:
-  - `UseStateForUnknown()` for attributes that don't change as a side effect
-    of updating other fields (most of them — e.g. a site's `tags`, a user's
-    `verified`). Without it, the attribute shows `(known after apply)` on
-    every single plan, not just when something relevant actually changed.
-  - No modifier for attributes that genuinely change on every update (e.g.
-    a site's `updated_at`) — they should show as unknown when the resource
-    is modified.
-- Add `tflog.Debug`/`tflog.Trace` calls at the start and end of each CRUD
-  method (and at the start of data source `Read`s) so `TF_LOG=DEBUG` gives
-  operators something to go on. Keep it to key identifying fields (id,
-  email, name) — see any existing resource file for the pattern.
+- Close every SDK response body with `closeBody(httpResp)` (`util.go`), not
+  `httpResp.Body.Close()` directly — the latter trips `golangci-lint`'s
+  `errcheck` and there's no reason to inline the nil check at every call site.
+- On a **resource** (not data source) schema, add
+  `stringplanmodifier.UseStateForUnknown()` to `Computed`-only attributes
+  that don't change as a side effect of updating other fields (most of them
+  — e.g. `id`). Without it, the attribute shows `(known after apply)` on
+  every single plan, not just when something relevant actually changed.
 - Prefer schema-level validators (`terraform-plugin-framework-validators`)
   over deep-diving into API semantics you don't have confirmed — e.g.
   `stringvalidator.LengthAtLeast(1)` for required strings, or
@@ -365,7 +464,14 @@ Every pull request and push to `main` runs:
 
 ## Releasing
 
-Pushing a tag matching `v*` (e.g. `v0.1.0`) triggers
+This provider's version tracks the Graphiant platform/SDK release it was
+built and tested against, rather than an independent SemVer sequence — e.g.
+`v26.8.0` pairs with `graphiant-sdk-go v26.8.0`. When re-syncing against a
+new SDK release, tag with the matching version; for a provider-only fix
+against the same SDK version, increment the patch component instead (e.g.
+`v26.8.1`).
+
+Pushing a tag matching `v*` (e.g. `v26.8.0`) triggers
 **[release.yml](.github/workflows/release.yml)**, which runs
 [GoReleaser](https://goreleaser.com) per [`.goreleaser.yml`](.goreleaser.yml)
 to build cross-platform binaries, sign the checksum file with GPG (required

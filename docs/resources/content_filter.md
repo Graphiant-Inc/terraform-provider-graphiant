@@ -3,25 +3,22 @@
 page_title: "graphiant_content_filter Resource - terraform-provider-graphiant"
 subcategory: ""
 description: |-
-  Manages a Graphiant global content filter: a set of domain-category blocking rules applied to a scope of LAN segments and/or sites.
+  A global content filter: a set of domain-category rules applied either to all sites or to a specific site list.
 ---
 
 # graphiant_content_filter (Resource)
 
-Manages a Graphiant global content filter: a set of domain-category blocking rules applied to a scope of LAN segments and/or sites.
+A global content filter: a set of domain-category rules applied either to all sites or to a specific site list.
 
 ## Example Usage
 
 ```terraform
-resource "graphiant_content_filter" "block_social_media" {
+resource "graphiant_content_filter" "example" {
   name          = "block-social-media"
   use_all_sites = true
 
   rules = [
-    {
-      domain_category_id  = 42
-      exception_wildcards = ["*.corp-approved-app.example.com"]
-    },
+    { domain_category_id = 42 },
   ]
 }
 ```
@@ -31,27 +28,25 @@ resource "graphiant_content_filter" "block_social_media" {
 
 ### Required
 
-- `name` (String) Content filter name.
+- `name` (String)
 
 ### Optional
 
-- `lan_names` (List of String)
-- `rules` (Attributes List) Domain-category blocking rules. (see [below for nested schema](#nestedatt--rules))
-- `site_list_id` (Number) Site list whose members this filter applies to. Mutually exclusive with use_all_sites.
-- `use_all_sites` (Boolean) Apply this filter to all sites in the tenant. Mutually exclusive with site_list_id; the API requires this to be true when set.
+- `lan_names` (List of String) LAN segments this filter applies on.
+- `rules` (Attributes List) (see [below for nested schema](#nestedatt--rules))
+- `site_list_id` (Number) Site list this filter applies to. Mutually exclusive with use_all_sites.
+- `use_all_sites` (Boolean) Apply this filter to every site in the tenant. Mutually exclusive with site_list_id.
 
 ### Read-Only
 
-- `created_at` (String) Creation timestamp (RFC3339, UTC).
-- `id` (Number) Content filter identifier assigned by the Graphiant controller.
-- `updated_at` (String) Last update timestamp (RFC3339, UTC).
+- `id` (String) The ID of this resource.
 
 <a id="nestedatt--rules"></a>
 ### Nested Schema for `rules`
 
 Required:
 
-- `domain_category_id` (Number)
+- `domain_category_id` (Number) ID of the category whose traffic is blocked.
 
 Optional:
 
@@ -64,7 +59,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# A graphiant_content_filter can be imported by its numeric id, as shown by
-# the Graphiant portal or the graphiant_content_filters data source.
-terraform import graphiant_content_filter.block_social_media 12345
+terraform import graphiant_content_filter.example <content_filter_id>
 ```

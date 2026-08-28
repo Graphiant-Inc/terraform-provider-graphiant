@@ -3,11 +3,10 @@ module github.com/Graphiant-Inc/terraform-provider-graphiant
 go 1.25.8
 
 require (
-	github.com/Graphiant-Inc/graphiant-sdk-go v0.0.0-20260728054212-79682428f053
+	github.com/Graphiant-Inc/graphiant-sdk-go v0.0.0-20260827013046-eb55842d504e
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/hashicorp/terraform-plugin-go v0.31.0
-	github.com/hashicorp/terraform-plugin-log v0.11.0
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
 )
 
@@ -51,6 +50,7 @@ require (
 	github.com/hashicorp/terraform-plugin-codegen-openapi v0.3.0 // indirect
 	github.com/hashicorp/terraform-plugin-codegen-spec v0.2.0 // indirect
 	github.com/hashicorp/terraform-plugin-docs v0.25.0 // indirect
+	github.com/hashicorp/terraform-plugin-log v0.11.0 // indirect
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.40.0 // indirect
 	github.com/hashicorp/terraform-registry-address v0.4.0 // indirect
 	github.com/hashicorp/terraform-svchost v0.2.1 // indirect
