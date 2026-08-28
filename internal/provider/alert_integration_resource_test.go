@@ -9,13 +9,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
-// enterprise is a placeholder that only resolves on a specific test tenant;
-// adjust for your own, or source via graphiant_enterprise/data source lookup.
+// enterprise is a placeholder that only resolves on a specific test tenant. It's
+// not replaced with a freshly-created graphiant_enterprise here because it's
+// unverified whether alert integrations can be scoped to an arbitrary enterprise
+// or only the caller's own — adjust the placeholder for your own tenant.
 func TestAccAlertIntegrationResource(t *testing.T) {
 	nickName := acctest.RandomWithPrefix("tf-acc-integration")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckHardcoded(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

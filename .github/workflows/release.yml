@@ -4,17 +4,86 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 26.8.0 or v26.8.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  # Only runs for a manual "Run workflow" dispatch. A plain `git tag vX.Y.Z &&
+  # git push origin vX.Y.Z` skips this entirely and goes straight to goreleaser,
+  # same as before this job existed.
+  tag:
+    name: Create release tag
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Check user permissions
+        run: |
+          PERMISSION=$(curl -s -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission" | \
+            jq -r '.permission')
+
+          if [ "$PERMISSION" != "admin" ] && [ "$PERMISSION" != "maintain" ]; then
+            echo "❌ Error: Only repository admins and maintainers can trigger this workflow."
+            echo "   Current user: ${{ github.actor }}"
+            echo "   Permission level: $PERMISSION"
+            echo "   Required: admin or maintain"
+            exit 1
+          fi
+
+          echo "✅ User ${{ github.actor }} has permission level: $PERMISSION"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push tag
+        id: tag
+        run: |
+          VERSION="${{ inputs.version }}"
+          # Ensure version starts with 'v'
+          if [[ ! "$VERSION" =~ ^v ]]; then
+            VERSION="v$VERSION"
+          fi
+
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "ℹ️  Tag $VERSION already exists, skipping tag creation"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$VERSION" -m "Release $VERSION"
+            git push origin "$VERSION"
+            echo "✅ Created and pushed tag: $VERSION"
+          fi
+
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+
   goreleaser:
+    name: Build, sign, and publish release
+    needs: [tag]
+    # The default `if` for a job with `needs` is equivalent to success(), which
+    # is false when a needed job was skipped — so without the explicit check
+    # below, a direct tag push (where `tag`'s `if` above skips it entirely)
+    # would skip this job too. This condition allows both that skipped case
+    # and a `tag` that actually succeeded (workflow_dispatch), while still
+    # skipping if `tag` failed outright (e.g. the permission check rejected
+    # the caller).
+    if: always() && !cancelled() && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ needs.tag.outputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'

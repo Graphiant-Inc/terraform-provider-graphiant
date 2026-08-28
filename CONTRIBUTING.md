@@ -318,11 +318,26 @@ implements `ResourceWithImportState` — use a composite id via
 `alert_integration_resource_test.go`/`device_config_resource_test.go`), and
 an in-place update. Acceptance tests create and delete real objects against a
 live tenant — name them with a clearly identifiable random prefix (e.g. via
-`acctest.RandomWithPrefix`) and never point them at a production tenant you
-can't afford to have test data appear in transiently. Tests that need a
-tenant-specific id with no natural way to create one in-test (device/site/
-region ids, etc.) use a documented placeholder value — call this out in a
-comment and expect contributors to adjust it for their own test tenant.
+`acctest.RandomWithPrefix`, never a static string) so the same test can run
+more than once concurrently (parallel CI runs, or a manual re-run overlapping
+the nightly schedule) without colliding on names.
+
+**Avoid hardcoded ids.** If a resource needs a foreign-key id (a LAN segment,
+a site, a region, an alert rule, etc.), prefer creating that object in the
+same test config and referencing its `.id` (see
+`gateway_resource_test.go`/`public_vif_resource_test.go`'s throwaway
+`graphiant_lan_segment`, or `alert_notification_resource_test.go`'s
+`data.graphiant_alert_rules.all.rules[0].rule_id` lookup) over a hardcoded
+number — this both removes any dependency on the test tenant's existing
+data and makes the test fully parallel-safe. Only fall back to a hardcoded
+placeholder when the referenced object genuinely can't be created or looked
+up dynamically (a physical device, a prefix set/routing policy with no write
+path, an enterprise identity) — in that case use `testAccPreCheckHardcoded`
+instead of `testAccPreCheck`, so the test never runs automatically in CI
+(`test.yml`'s `acceptance` job never sets `GRAPHIANT_ACC_HARDCODED_IDS`) and
+only runs locally once a maintainer has edited the placeholder for their own
+tenant and opted in via that env var. Document the placeholder in a comment
+either way.
 
 ### Sanity check (no Terraform required)
 
@@ -453,14 +468,44 @@ produces a diff, so `docs/` can't silently drift from the schema or examples.
 Every pull request and push to `main` runs:
 
 - **[test.yml](.github/workflows/test.yml)** — `build` (`go build`), `test`
-  (`go vet` + `go test -race`, no credentials needed), and `acceptance`
+  (`go vet` + `go test -race`, no credentials needed), `acceptance`
   (`TestAcc*` against a live tenant if `GRAPHIANT_ACCESS_TOKEN` or
   `GRAPHIANT_USERNAME`+`GRAPHIANT_PASSWORD` are configured as repository
   secrets/variables — otherwise those tests self-skip and the job still
-  passes). `acceptance` also runs nightly via a `schedule` trigger.
+  passes), and `sanity` (`make sanity` + `make sanity-tf` against the same
+  credentials — skipped, not failed, if none are configured). `acceptance`
+  and `sanity` also run nightly via a `schedule` trigger. See
+  [Repository secrets](#repository-secrets) below for what to configure.
 - **[lint.yml](.github/workflows/lint.yml)** — `golangci-lint`, a `gofmt`
   check, `terraform fmt -check` over `examples/`, and the `docs` drift check
   described above.
+
+### Repository secrets
+
+None of these are required for `build`, `test`, or `lint.yml` to pass — only
+to exercise `acceptance`/`sanity` against a live tenant, and to cut a
+release. Add them under **Settings → Secrets and variables → Actions** in
+GitHub.
+
+| Name | Used by | Required? | Notes |
+|------|---------|------------|-------|
+| `GRAPHIANT_ACCESS_TOKEN` | `acceptance`, `sanity` | One of this or the username/password pair below | A bearer token; takes precedence over username/password. |
+| `GRAPHIANT_USERNAME` | `acceptance`, `sanity` | — | Not secret-sensitive; can be added as a repository **variable** instead of a secret. |
+| `GRAPHIANT_PASSWORD` | `acceptance`, `sanity` | — | Pair with `GRAPHIANT_USERNAME`. |
+| `GRAPHIANT_HOST` | `acceptance`, `sanity` | No | Defaults to `https://api.graphiant.com`; only add if your test tenant uses a different host. Can be a repository variable. |
+| `GPG_PRIVATE_KEY` | `release.yml` | Yes, to release | ASCII-armored private key whose public key is registered with the Terraform Registry's publisher settings for this provider. |
+| `PASSPHRASE` | `release.yml` | Yes, to release | Passphrase for `GPG_PRIVATE_KEY`. |
+
+`GITHUB_TOKEN` is provided automatically by GitHub Actions for both
+workflows — never add it yourself. Without `GRAPHIANT_ACCESS_TOKEN` (or the
+username/password pair), `acceptance` and `sanity` self-skip cleanly rather
+than fail — see [Testing](#testing) above. Without `GPG_PRIVATE_KEY`/
+`PASSPHRASE`, `release.yml` fails outright, since GoReleaser can't sign the
+checksum file the Registry requires; see
+[Releasing](#releasing) below for how to generate and register that key.
+
+**Never point these at a production tenant.** `acceptance` creates and
+deletes real objects; use a disposable test tenant.
 
 ## Releasing
 
@@ -471,11 +516,21 @@ new SDK release, tag with the matching version; for a provider-only fix
 against the same SDK version, increment the patch component instead (e.g.
 `v26.8.1`).
 
-Pushing a tag matching `v*` (e.g. `v26.8.0`) triggers
-**[release.yml](.github/workflows/release.yml)**, which runs
-[GoReleaser](https://goreleaser.com) per [`.goreleaser.yml`](.goreleaser.yml)
-to build cross-platform binaries, sign the checksum file with GPG (required
-for the Terraform Registry), and publish a GitHub release.
+**[release.yml](.github/workflows/release.yml)** builds cross-platform
+binaries via [GoReleaser](https://goreleaser.com) (per
+[`.goreleaser.yml`](.goreleaser.yml)), signs the checksum file with GPG
+(required for the Terraform Registry), and publishes a GitHub release. It
+triggers either way:
+
+- **Push a tag matching `v*`** (e.g. `git tag v26.8.0 && git push origin
+  v26.8.0`) — goes straight to the GoReleaser job, same as before this
+  workflow had a dispatch option.
+- **Run the workflow manually** from the Actions tab (`workflow_dispatch`,
+  with a `version` input) — a `tag` job first checks that the caller has
+  `admin` or `maintain` permission on the repo, then creates and pushes the
+  tag (a no-op if it already exists) before GoReleaser runs. Use this when
+  you'd rather not tag locally, or want repo permissions to gate who can cut
+  a release.
 
 This requires two repository secrets that are not configured by default:
 

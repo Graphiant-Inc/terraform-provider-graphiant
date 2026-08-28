@@ -1,20 +1,24 @@
 package provider
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccRouteTagResource(t *testing.T) {
+	levelZero := acctest.RandomWithPrefix("tf-acc-route-tag")
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccRouteTagResourceConfig(),
+				Config: testAccRouteTagResourceConfig(levelZero),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("graphiant_route_tag.test", "level_zero", "tf-acc-test"),
+					resource.TestCheckResourceAttr("graphiant_route_tag.test", "level_zero", levelZero),
 					resource.TestCheckResourceAttrSet("graphiant_route_tag.test", "id"),
 				),
 			},
@@ -31,10 +35,10 @@ func TestAccRouteTagResource(t *testing.T) {
 	})
 }
 
-func testAccRouteTagResourceConfig() string {
-	return `
+func testAccRouteTagResourceConfig(levelZero string) string {
+	return fmt.Sprintf(`
 resource "graphiant_route_tag" "test" {
-  level_zero = "tf-acc-test"
+  level_zero = %[1]q
 }
-`
+`, levelZero)
 }

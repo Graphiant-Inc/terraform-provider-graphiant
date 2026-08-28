@@ -10,7 +10,7 @@ import (
 // a device pending bringup; adjust for your own, or source via graphiant_edges.
 func TestAccDeviceBringupResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckHardcoded(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

@@ -54,6 +54,13 @@ jobs:
   # a silently-skipped job, but each TestAcc* additionally self-skips (via
   # testAccPreCheck) if credentials aren't configured at all — e.g. on a
   # fork's pull_request run, which never receives repository secrets.
+  #
+  # A handful of tests reference a hardcoded id/serial for an object this
+  # provider has no way to create on demand (a physical device, a prefix
+  # set/routing policy, an enterprise identity) and use testAccPreCheckHardcoded
+  # instead of testAccPreCheck, gated on GRAPHIANT_ACC_HARDCODED_IDS. That var
+  # is deliberately never set here, so those tests always self-skip in CI —
+  # see CONTRIBUTING.md's "Acceptance tests" section.
   acceptance:
     name: Acceptance tests
     needs: build
@@ -84,3 +91,42 @@ jobs:
             echo "   as repository secrets/variables to exercise them in CI. See CONTRIBUTING.md."
           fi
           go test -v -timeout 25m ./...
+
+  # Sanity checks (cmd/sanity, scripts/terraform-sanity.sh — see CONTRIBUTING.md)
+  # are lightweight, read-only smoke tests against a live Graphiant tenant: log
+  # in and list the edge summary, first via the SDK directly, then through the
+  # real provider binary + Terraform CLI. Unlike the acceptance tests above,
+  # these are plain programs rather than `go test`, so there's no built-in
+  # self-skip — credentials are checked explicitly below and the step exits
+  # cleanly (not a failure) when none are configured, e.g. a fork's
+  # pull_request run, which never receives repository secrets.
+  sanity:
+    name: Sanity checks
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Run sanity checks
+        env:
+          GRAPHIANT_HOST: ${{ secrets.GRAPHIANT_HOST || vars.GRAPHIANT_HOST || '' }}
+          GRAPHIANT_ACCESS_TOKEN: ${{ secrets.GRAPHIANT_ACCESS_TOKEN || '' }}
+          GRAPHIANT_USERNAME: ${{ secrets.GRAPHIANT_USERNAME || vars.GRAPHIANT_USERNAME || '' }}
+          GRAPHIANT_PASSWORD: ${{ secrets.GRAPHIANT_PASSWORD || '' }}
+        run: |
+          if [ -z "$GRAPHIANT_ACCESS_TOKEN" ] && { [ -z "$GRAPHIANT_USERNAME" ] || [ -z "$GRAPHIANT_PASSWORD" ]; }; then
+            echo "ℹ️  No GRAPHIANT credentials configured - skipping sanity checks"
+            echo "   Configure GRAPHIANT_ACCESS_TOKEN, or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD,"
+            echo "   as repository secrets/variables to exercise them in CI. See CONTRIBUTING.md."
+            exit 0
+          fi
+          echo "✅ GRAPHIANT credentials detected - running sanity checks against a live tenant"
+          make sanity
+          make sanity-tf

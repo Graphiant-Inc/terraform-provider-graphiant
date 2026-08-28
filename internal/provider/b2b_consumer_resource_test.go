@@ -28,14 +28,25 @@ func TestAccB2bConsumerResource(t *testing.T) {
 	})
 }
 
+// service_lan_segment/lan_segment/the consumer_lan_segments key all reference
+// throwaway graphiant_lan_segment resources created in this same config,
+// rather than hardcoded ids.
 func testAccB2bConsumerResourceConfig(prefix string) string {
 	return fmt.Sprintf(`
+resource "graphiant_lan_segment" "producer" {
+  name = "%[1]s-producer-lan"
+}
+
+resource "graphiant_lan_segment" "consumer" {
+  name = "%[1]s-consumer-lan"
+}
+
 resource "graphiant_b2b_producer_service" "test" {
   service_name = "%[1]s-svc"
   service_type = "peering_service"
 
   policy = {
-    service_lan_segment = 100
+    service_lan_segment = graphiant_lan_segment.producer.id
   }
 }
 
@@ -53,7 +64,7 @@ resource "graphiant_b2b_match" "test" {
 
   match = {
     service_id        = graphiant_b2b_producer_service.test.id
-    lan_segment       = 100
+    lan_segment       = graphiant_lan_segment.producer.id
     consumer_prefixes = ["10.50.0.0/16"]
   }
 }
@@ -65,7 +76,7 @@ resource "graphiant_b2b_consumer" "test" {
 
   policy = {
     consumer_lan_segments = {
-      "200" = {
+      (graphiant_lan_segment.consumer.id) = {
         consumer_prefixes = ["10.50.0.0/16"]
       }
     }
