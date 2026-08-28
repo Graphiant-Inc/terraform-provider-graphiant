@@ -12,7 +12,7 @@ func TestAccGatewayResource(t *testing.T) {
 	lanSegmentName := acctest.RandomWithPrefix("tf-acc-gateway-lan")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

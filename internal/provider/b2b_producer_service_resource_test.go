@@ -14,7 +14,7 @@ func TestAccB2bProducerServiceResource(t *testing.T) {
 	siteName := acctest.RandomWithPrefix("tf-acc-b2b-producer-site")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

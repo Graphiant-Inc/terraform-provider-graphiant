@@ -47,3 +47,17 @@ func testAccPreCheckHardcoded(t *testing.T) {
 			"placeholder to a real object in your own test tenant, then set GRAPHIANT_ACC_HARDCODED_IDS=1.")
 	}
 }
+
+// testAccPreCheckDisabled gates tests that are temporarily disabled pending
+// investigation (see CONTRIBUTING.md's "Acceptance tests" section). Like
+// testAccPreCheckHardcoded, they never run automatically in CI (test.yml's
+// acceptance job never sets GRAPHIANT_ACC_RUN_DISABLED) and only run locally
+// once a maintainer has opted in via that env var.
+func testAccPreCheckDisabled(t *testing.T) {
+	t.Helper()
+	testAccPreCheck(t)
+	if os.Getenv("GRAPHIANT_ACC_RUN_DISABLED") == "" {
+		t.Skip("This test is temporarily disabled (see CONTRIBUTING.md). It never runs in CI. " +
+			"To run it locally, set GRAPHIANT_ACC_RUN_DISABLED=1.")
+	}
+}

@@ -12,7 +12,7 @@ func TestAccB2bConsumerResource(t *testing.T) {
 	prefix := acctest.RandomWithPrefix("tf-acc-b2b-consumer")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

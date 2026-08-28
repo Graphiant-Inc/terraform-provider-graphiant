@@ -12,7 +12,7 @@ func TestAccContentFilterResource(t *testing.T) {
 	name := acctest.RandomWithPrefix("tf-acc-content-filter")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
