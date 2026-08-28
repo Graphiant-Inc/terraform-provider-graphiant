@@ -1,4 +1,4 @@
-.PHONY: build test testacc vet fmt fmt-check lint tidy install generate-schemas docs docs-check help
+.PHONY: build test testacc sanity sanity-tf vet fmt fmt-check lint tidy install docs docs-check help
 
 ## build: Compile the provider binary
 build:
@@ -12,6 +12,17 @@ test:
 ## TF_ACC=1 and GRAPHIANT_ACCESS_TOKEN, or GRAPHIANT_USERNAME+GRAPHIANT_PASSWORD)
 testacc:
 	TF_ACC=1 go test -v -timeout 30m ./...
+
+## sanity: Terraform-independent smoke test — log in and list the edge summary
+## (requires GRAPHIANT_ACCESS_TOKEN, or GRAPHIANT_USERNAME+GRAPHIANT_PASSWORD)
+sanity:
+	go run ./cmd/sanity
+
+## sanity-tf: Same check as `sanity`, but through the real provider binary and
+## the real Terraform plugin protocol via a throwaway dev override (requires
+## GRAPHIANT_ACCESS_TOKEN, or GRAPHIANT_USERNAME+GRAPHIANT_PASSWORD, and terraform on PATH)
+sanity-tf:
+	./scripts/terraform-sanity.sh
 
 ## vet: Run go vet
 vet:
@@ -42,10 +53,6 @@ tidy:
 ## install: Build and install the provider binary to GOBIN
 install:
 	go install .
-
-## generate-schemas: Regenerate internal/provider/generated/** from api/graphiant_api_docs_v26.7.0.json
-generate-schemas:
-	api/generate.sh
 
 ## docs: Regenerate docs/ from examples/ and schema descriptions (tfplugindocs)
 docs:

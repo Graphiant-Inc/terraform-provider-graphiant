@@ -3,21 +3,22 @@
 page_title: "graphiant_user Resource - terraform-provider-graphiant"
 subcategory: ""
 description: |-
-  Manages a Graphiant IAM user.
+  A Graphiant user. The API has no general update endpoint for user profile fields, so every configurable attribute forces recreation of the resource on change.
 ---
 
 # graphiant_user (Resource)
 
-Manages a Graphiant IAM user.
+A Graphiant user. The API has no general update endpoint for user profile fields, so every configurable attribute forces recreation of the resource on change.
 
 ## Example Usage
 
 ```terraform
-resource "graphiant_user" "jane" {
-  email      = "jane@example.com"
+resource "graphiant_user" "example" {
+  email      = "jane.doe@example.com"
   first_name = "Jane"
   last_name  = "Doe"
-  group_id   = graphiant_group.network_admins.id
+  group_id   = graphiant_group.example.id
+  time_zone  = "America/Los_Angeles"
 }
 ```
 
@@ -26,23 +27,22 @@ resource "graphiant_user" "jane" {
 
 ### Required
 
-- `email` (String) User email address. Identifies the user and cannot be changed after creation.
-- `first_name` (String) User's first name.
-- `last_name` (String) User's last name.
+- `email` (String) User email address, used as the create/lookup key.
+- `first_name` (String)
+- `last_name` (String)
 
 ### Optional
 
-- `group_id` (String) ID of the IAM group this user is assigned to.
-- `time_zone` (String) User's time zone (e.g. "America/Los_Angeles").
+- `group_id` (String) Group to add the user to at creation time.
+- `time_zone` (String)
 
 ### Read-Only
 
-- `enterprise_id` (Number) Enterprise the user belongs to.
-- `id` (String) User identifier. Equal to the user's email address.
-- `last_active_at` (String) Timestamp of the user's last activity (RFC3339, UTC).
-- `mfa_factor` (String) The user's configured MFA factor, if any.
-- `phone_number` (String) User's phone number.
-- `verified` (Boolean) Whether the user has verified their email address.
+- `enterprise_id` (Number)
+- `id` (String) Server-assigned user ID.
+- `mfa_factor` (String)
+- `phone_number` (String)
+- `verified` (Boolean) Whether the user has verified their account.
 
 ## Import
 
@@ -51,7 +51,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# A graphiant_user can be imported by its id, which is the user's email
-# address.
-terraform import graphiant_user.jane jane@example.com
+terraform import graphiant_user.example <user_id>
 ```

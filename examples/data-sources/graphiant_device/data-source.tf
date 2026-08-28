@@ -1,7 +1,7 @@
-data "graphiant_device" "edge1" {
-  id = 67890
+data "graphiant_device" "example" {
+  id = 12345
 }
 
-output "edge1_status" {
-  value = data.graphiant_device.edge1.status
+output "device_hostname" {
+  value = data.graphiant_device.example.hostname
 }

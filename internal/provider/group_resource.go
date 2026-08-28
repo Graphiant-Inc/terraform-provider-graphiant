@@ -4,29 +4,21 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	graphiant "github.com/Graphiant-Inc/graphiant-sdk-go"
-	"github.com/Graphiant-Inc/terraform-provider-graphiant/internal/provider/generated/resource_group"
+	sdk "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
 
 var (
-	_ resource.Resource                     = &groupResource{}
-	_ resource.ResourceWithConfigure        = &groupResource{}
-	_ resource.ResourceWithConfigValidators = &groupResource{}
-	_ resource.ResourceWithImportState      = &groupResource{}
+	_ resource.Resource                = &groupResource{}
+	_ resource.ResourceWithConfigure   = &groupResource{}
+	_ resource.ResourceWithImportState = &groupResource{}
 )
 
 func NewGroupResource() resource.Resource {
@@ -34,180 +26,316 @@ func NewGroupResource() resource.Resource {
 }
 
 type groupResource struct {
-	client *gClient
+	pd *providerData
 }
 
-// groupResourceModel mirrors iamGroup together with the subset of fields
-// that can be set via v1GroupsPutRequest / v1GroupsIdPatchRequest.
+type groupPermissionsModel struct {
+	AssetManager                 types.String `tfsdk:"asset_manager"`
+	B2b                          types.String `tfsdk:"b2b"`
+	B2bSecurityProfileExternal   types.String `tfsdk:"b2b_security_profile_external"`
+	BillingAndInvoicing          types.String `tfsdk:"billing_and_invoicing"`
+	Compliance                   types.String `tfsdk:"compliance"`
+	DeveloperTools               types.String `tfsdk:"developer_tools"`
+	Gateway                      types.String `tfsdk:"gateway"`
+	GlobalServices               types.String `tfsdk:"global_services"`
+	Insights                     types.String `tfsdk:"insights"`
+	Licensing                    types.String `tfsdk:"licensing"`
+	Logs                         types.String `tfsdk:"logs"`
+	MonitoringAndTroubleshooting types.String `tfsdk:"monitoring_and_troubleshooting"`
+	NetworkConfiguration         types.String `tfsdk:"network_configuration"`
+	OrderStatus                  types.String `tfsdk:"order_status"`
+	Reports                      types.String `tfsdk:"reports"`
+	SafetyAndSecurity            types.String `tfsdk:"safety_and_security"`
+	ServicePolicies              types.String `tfsdk:"service_policies"`
+	Support                      types.String `tfsdk:"support"`
+	UserAndTenantManagement      types.String `tfsdk:"user_and_tenant_management"`
+}
+
+var groupPermissionsAttrTypes = map[string]attrType{
+	"asset_manager":                  types.StringType,
+	"b2b":                            types.StringType,
+	"b2b_security_profile_external":  types.StringType,
+	"billing_and_invoicing":          types.StringType,
+	"compliance":                     types.StringType,
+	"developer_tools":                types.StringType,
+	"gateway":                        types.StringType,
+	"global_services":                types.StringType,
+	"insights":                       types.StringType,
+	"licensing":                      types.StringType,
+	"logs":                           types.StringType,
+	"monitoring_and_troubleshooting": types.StringType,
+	"network_configuration":          types.StringType,
+	"order_status":                   types.StringType,
+	"reports":                        types.StringType,
+	"safety_and_security":            types.StringType,
+	"service_policies":               types.StringType,
+	"support":                        types.StringType,
+	"user_and_tenant_management":     types.StringType,
+}
+
+func permissionsToSDK(ctx context.Context, obj types.Object) (*sdk.CommonPermissions, diag.Diagnostics) {
+	if obj.IsNull() || obj.IsUnknown() {
+		return nil, nil
+	}
+	var m groupPermissionsModel
+	diags := obj.As(ctx, &m, objectAsOptions)
+	if diags.HasError() {
+		return nil, diags
+	}
+	return &sdk.CommonPermissions{
+		AssetManager:                 m.AssetManager.ValueStringPointer(),
+		B2b:                          m.B2b.ValueStringPointer(),
+		B2bSecurityProfileExternal:   m.B2bSecurityProfileExternal.ValueStringPointer(),
+		BillingAndInvoicing:          m.BillingAndInvoicing.ValueStringPointer(),
+		Compliance:                   m.Compliance.ValueStringPointer(),
+		DeveloperTools:               m.DeveloperTools.ValueStringPointer(),
+		Gateway:                      m.Gateway.ValueStringPointer(),
+		GlobalServices:               m.GlobalServices.ValueStringPointer(),
+		Insights:                     m.Insights.ValueStringPointer(),
+		Licensing:                    m.Licensing.ValueStringPointer(),
+		Logs:                         m.Logs.ValueStringPointer(),
+		MonitoringAndTroubleshooting: m.MonitoringAndTroubleshooting.ValueStringPointer(),
+		NetworkConfiguration:         m.NetworkConfiguration.ValueStringPointer(),
+		OrderStatus:                  m.OrderStatus.ValueStringPointer(),
+		Reports:                      m.Reports.ValueStringPointer(),
+		SafetyAndSecurity:            m.SafetyAndSecurity.ValueStringPointer(),
+		ServicePolicies:              m.ServicePolicies.ValueStringPointer(),
+		Support:                      m.Support.ValueStringPointer(),
+		UserAndTenantManagement:      m.UserAndTenantManagement.ValueStringPointer(),
+	}, nil
+}
+
+func permissionsFromSDK(ctx context.Context, p *sdk.CommonPermissions) (types.Object, diag.Diagnostics) {
+	if p == nil {
+		return types.ObjectNull(groupPermissionsAttrTypes), nil
+	}
+	m := groupPermissionsModel{
+		AssetManager:                 types.StringPointerValue(p.AssetManager),
+		B2b:                          types.StringPointerValue(p.B2b),
+		B2bSecurityProfileExternal:   types.StringPointerValue(p.B2bSecurityProfileExternal),
+		BillingAndInvoicing:          types.StringPointerValue(p.BillingAndInvoicing),
+		Compliance:                   types.StringPointerValue(p.Compliance),
+		DeveloperTools:               types.StringPointerValue(p.DeveloperTools),
+		Gateway:                      types.StringPointerValue(p.Gateway),
+		GlobalServices:               types.StringPointerValue(p.GlobalServices),
+		Insights:                     types.StringPointerValue(p.Insights),
+		Licensing:                    types.StringPointerValue(p.Licensing),
+		Logs:                         types.StringPointerValue(p.Logs),
+		MonitoringAndTroubleshooting: types.StringPointerValue(p.MonitoringAndTroubleshooting),
+		NetworkConfiguration:         types.StringPointerValue(p.NetworkConfiguration),
+		OrderStatus:                  types.StringPointerValue(p.OrderStatus),
+		Reports:                      types.StringPointerValue(p.Reports),
+		SafetyAndSecurity:            types.StringPointerValue(p.SafetyAndSecurity),
+		ServicePolicies:              types.StringPointerValue(p.ServicePolicies),
+		Support:                      types.StringPointerValue(p.Support),
+		UserAndTenantManagement:      types.StringPointerValue(p.UserAndTenantManagement),
+	}
+	return types.ObjectValueFrom(ctx, groupPermissionsAttrTypes, m)
+}
+
 type groupResourceModel struct {
-	Id                 types.String      `tfsdk:"id"`
-	Name               types.String      `tfsdk:"name"`
-	Description        types.String      `tfsdk:"description"`
-	GroupType          types.String      `tfsdk:"group_type"`
-	GroupId            types.String      `tfsdk:"group_id"`
-	ManagesEnterprises types.Bool        `tfsdk:"manages_enterprises"`
-	TimeWindowStart    types.Int64       `tfsdk:"time_window_start"`
-	TimeWindowEnd      types.Int64       `tfsdk:"time_window_end"`
-	Permissions        *permissionsModel `tfsdk:"permissions"`
-	EnterpriseIds      types.List        `tfsdk:"enterprise_ids"`
+	ID                 types.String `tfsdk:"id"`
+	Name               types.String `tfsdk:"name"`
+	Description        types.String `tfsdk:"description"`
+	GroupID            types.String `tfsdk:"group_id"`
+	GroupType          types.String `tfsdk:"group_type"`
+	ManagesEnterprises types.Bool   `tfsdk:"manages_enterprises"`
+	Permissions        types.Object `tfsdk:"permissions"`
+	TimeWindowStart    types.Int64  `tfsdk:"time_window_start"`
+	TimeWindowEnd      types.Int64  `tfsdk:"time_window_end"`
+	Members            types.Set    `tfsdk:"members"`
 }
 
-func (r *groupResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *groupResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_group"
 }
 
-// Schema is generated from the OpenAPI spec (see api/generator_config.yml,
-// resources.group) via `make generate-schemas`. Note: the API's raw field
-// for what this provider calls "idp_group_id" is actually named "groupId"
-// (see manaV2's v1GroupsPutRequest); the generated attribute is named
-// group_id accordingly rather than idp_group_id.
-func (r *groupResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = resource_group.GroupResourceSchema(ctx)
-	resp.Schema.Description = "Manages a Graphiant IAM group (a named collection of permissions that users can be assigned to)."
-	resp.Schema.Attributes["id"] = schema.StringAttribute{
-		Computed:    true,
-		Description: "Group identifier assigned by the Graphiant controller.",
-		PlanModifiers: []planmodifier.String{
-			stringplanmodifier.UseStateForUnknown(),
+func (r *groupResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "A Graphiant permissions group. Create has no response body, so the new group is located " +
+			"afterward by matching name+description in the group list — this will fail ambiguously if another " +
+			"group with the same name and description already exists.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"name": schema.StringAttribute{
+				Required: true,
+			},
+			"description": schema.StringAttribute{
+				Required: true,
+			},
+			"group_id": schema.StringAttribute{
+				Optional:      true,
+				Description:   "Only supply if the enterprise uses an IdP for group provisioning.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			},
+			"group_type": schema.StringAttribute{
+				Optional: true,
+			},
+			"manages_enterprises": schema.BoolAttribute{
+				Optional:    true,
+				Description: "MSP use: whether this group manages child enterprises.",
+			},
+			"time_window_start": schema.Int64Attribute{
+				Optional: true,
+			},
+			"time_window_end": schema.Int64Attribute{
+				Optional: true,
+			},
+			"members": schema.SetAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+				Description: "User IDs belonging to this group. Managed as a full replace on every change.",
+			},
 		},
-	}
-	resp.Schema.Attributes["name"] = schema.StringAttribute{
-		Required:    true,
-		Description: "Group name.",
-		Validators: []validator.String{
-			stringvalidator.LengthAtLeast(1),
-		},
-	}
-	resp.Schema.Attributes["description"] = schema.StringAttribute{
-		Required:    true,
-		Description: "Group description.",
-		Validators: []validator.String{
-			stringvalidator.LengthAtLeast(1),
-		},
-	}
-	resp.Schema.Attributes["group_type"] = schema.StringAttribute{
-		Optional:    true,
-		Computed:    true,
-		Description: "Group type (e.g. \"custom\").",
-		PlanModifiers: []planmodifier.String{
-			stringplanmodifier.UseStateForUnknown(),
-		},
-	}
-	resp.Schema.Attributes["group_id"] = schema.StringAttribute{
-		Optional:    true,
-		Computed:    true,
-		Description: "External group ID. Only supply this if the enterprise uses an identity provider (IdP) for group management.",
-		PlanModifiers: []planmodifier.String{
-			stringplanmodifier.RequiresReplace(),
-		},
-	}
-	resp.Schema.Attributes["manages_enterprises"] = schema.BoolAttribute{
-		Optional:    true,
-		Computed:    true,
-		Description: "Whether members of this group can manage sub-enterprises. Can only be set at creation.",
-		PlanModifiers: []planmodifier.Bool{
-			boolplanmodifier.RequiresReplace(),
-		},
-	}
-	resp.Schema.Attributes["time_window_start"] = schema.Int64Attribute{
-		Optional:    true,
-		Description: "Unix timestamp for the start of the access time window. Must be set together with time_window_end.",
-	}
-	resp.Schema.Attributes["time_window_end"] = schema.Int64Attribute{
-		Optional:    true,
-		Description: "Unix timestamp for the end of the access time window. Must be set together with time_window_start.",
-	}
-	// enterprise_ids is purely server-derived (from group membership
-	// elsewhere) and never changes as a side effect of updating the fields
-	// above.
-	resp.Schema.Attributes["enterprise_ids"] = schema.ListAttribute{
-		Computed:    true,
-		ElementType: types.Int64Type,
-		Description: "Enterprises this group has access to.",
-		PlanModifiers: []planmodifier.List{
-			listplanmodifier.UseStateForUnknown(),
+		Blocks: map[string]schema.Block{
+			"permissions": schema.SingleNestedBlock{
+				Description: "Per-module permission levels (values are opaque strings defined by the API).",
+				Attributes: map[string]schema.Attribute{
+					"asset_manager":                  schema.StringAttribute{Optional: true},
+					"b2b":                            schema.StringAttribute{Optional: true},
+					"b2b_security_profile_external":  schema.StringAttribute{Optional: true},
+					"billing_and_invoicing":          schema.StringAttribute{Optional: true},
+					"compliance":                     schema.StringAttribute{Optional: true},
+					"developer_tools":                schema.StringAttribute{Optional: true},
+					"gateway":                        schema.StringAttribute{Optional: true},
+					"global_services":                schema.StringAttribute{Optional: true},
+					"insights":                       schema.StringAttribute{Optional: true},
+					"licensing":                      schema.StringAttribute{Optional: true},
+					"logs":                           schema.StringAttribute{Optional: true},
+					"monitoring_and_troubleshooting": schema.StringAttribute{Optional: true},
+					"network_configuration":          schema.StringAttribute{Optional: true},
+					"order_status":                   schema.StringAttribute{Optional: true},
+					"reports":                        schema.StringAttribute{Optional: true},
+					"safety_and_security":            schema.StringAttribute{Optional: true},
+					"service_policies":               schema.StringAttribute{Optional: true},
+					"support":                        schema.StringAttribute{Optional: true},
+					"user_and_tenant_management":     schema.StringAttribute{Optional: true},
+				},
+			},
 		},
 	}
 }
 
-func (r *groupResource) ConfigValidators(_ context.Context) []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		resourcevalidator.RequiredTogether(
-			path.MatchRoot("time_window_start"),
-			path.MatchRoot("time_window_end"),
-		),
-	}
+func (r *groupResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	r.pd = configurePD(req.ProviderData, &resp.Diagnostics)
 }
 
-func (r *groupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-	client, ok := req.ProviderData.(*gClient)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("expected *gClient, got: %T", req.ProviderData))
-		return
-	}
-	r.client = client
-}
-
-func (r *groupResource) flatten(ctx context.Context, g *graphiant.IamGroup, m *groupResourceModel) diag.Diagnostics {
+func (r *groupResource) findGroupByID(ctx context.Context, id string) (*sdk.IamGroup, bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	m.Id = strValue(g.Id)
-	m.Name = strValue(g.Name)
-	m.Description = strValue(g.Description)
-	m.GroupType = strValue(g.GroupType)
-	m.TimeWindowStart = int64Value(g.TimeWindowStart)
-	m.TimeWindowEnd = int64Value(g.TimeWindowEnd)
-	m.Permissions = flattenPermissions(g.Permissions)
-
-	ids := g.EnterpriseIds
-	if ids == nil {
-		ids = []int64{}
+	out, httpResp, err := r.pd.api.DefaultAPI.V1GroupsGet(ctx).Authorization(r.pd.token).Execute()
+	closeBody(httpResp)
+	if err != nil {
+		diags.AddError("Unable to list groups", apiErrorDetail(err))
+		return nil, false, diags
 	}
-	list, d := types.ListValueFrom(ctx, types.Int64Type, ids)
+	if out == nil {
+		return nil, false, diags
+	}
+	for i := range out.Groups {
+		if out.Groups[i].Id != nil && *out.Groups[i].Id == id {
+			return &out.Groups[i], true, diags
+		}
+	}
+	return nil, false, diags
+}
+
+func (r *groupResource) findGroupByNameAndDescription(ctx context.Context, name, description string) (*sdk.IamGroup, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	out, httpResp, err := r.pd.api.DefaultAPI.V1GroupsGet(ctx).Authorization(r.pd.token).Execute()
+	closeBody(httpResp)
+	if err != nil {
+		diags.AddError("Unable to list groups", apiErrorDetail(err))
+		return nil, diags
+	}
+	if out == nil {
+		diags.AddError("Unable to find created group", "group list came back empty")
+		return nil, diags
+	}
+	var matches []*sdk.IamGroup
+	for i := range out.Groups {
+		g := &out.Groups[i]
+		if g.Name != nil && *g.Name == name && g.Description != nil && *g.Description == description {
+			matches = append(matches, g)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0], diags
+	case 0:
+		diags.AddError("Unable to find created group", "no group in the list matched the submitted name and description")
+		return nil, diags
+	default:
+		diags.AddError(
+			"Ambiguous group lookup",
+			fmt.Sprintf("%d groups matched name %q and description %q; the API's create endpoint returns no ID, "+
+				"so this provider cannot disambiguate. Use a unique name+description, or set group_id explicitly.", len(matches), name, description),
+		)
+		return nil, diags
+	}
+}
+
+func (m *groupResourceModel) applyGroup(ctx context.Context, g *sdk.IamGroup) diag.Diagnostics {
+	m.ID = types.StringPointerValue(g.Id)
+	m.Name = types.StringPointerValue(g.Name)
+	m.Description = types.StringPointerValue(g.Description)
+	m.GroupType = types.StringPointerValue(g.GroupType)
+	m.TimeWindowStart = types.Int64PointerValue(g.TimeWindowStart)
+	m.TimeWindowEnd = types.Int64PointerValue(g.TimeWindowEnd)
+
+	perms, diags := permissionsFromSDK(ctx, g.Permissions)
+	if diags.HasError() {
+		return diags
+	}
+	m.Permissions = perms
+	return nil
+}
+
+func (r *groupResource) syncMembers(ctx context.Context, id string, members types.Set) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if members.IsNull() || members.IsUnknown() {
+		return diags
+	}
+
+	var ids []string
+	d := members.ElementsAs(ctx, &ids, false)
 	diags.Append(d...)
-	m.EnterpriseIds = list
+	if diags.HasError() {
+		return diags
+	}
+
+	replace := true
+	body := sdk.V1GroupsIdMembersPostRequest{MemberIds: ids, ReplaceExisting: &replace}
+	httpResp, err := r.pd.api.DefaultAPI.V1GroupsIdMembersPost(ctx, id).
+		Authorization(r.pd.token).
+		V1GroupsIdMembersPostRequest(body).
+		Execute()
+	closeBody(httpResp)
+	if err != nil {
+		diags.AddError("Unable to set group members", apiErrorDetail(err))
+	}
 	return diags
 }
 
-// findGroup looks up a group by ID. There is no get-by-id endpoint for
-// groups, so this lists every group and filters client-side.
-func (r *groupResource) findGroup(ctx context.Context, id string) (*graphiant.IamGroup, error) {
-	out, httpRes, err := r.client.api.DefaultAPI.V1GroupsGet(ctx).Authorization(r.client.authHeader()).Execute()
-	defer closeBody(httpRes)
+func (r *groupResource) readMembers(ctx context.Context, id string) (types.Set, diag.Diagnostics) {
+	out, httpResp, err := r.pd.api.DefaultAPI.V1GroupsIdMembersGet(ctx, id).Authorization(r.pd.token).Execute()
+	closeBody(httpResp)
 	if err != nil {
-		return nil, err
+		var diags diag.Diagnostics
+		diags.AddError("Unable to read group members", apiErrorDetail(err))
+		return types.SetNull(types.StringType), diags
 	}
-	if out == nil {
-		return nil, nil
-	}
-	for _, g := range out.GetGroups() {
-		if g.GetId() == id {
-			return &g, nil
+	var ids []string
+	if out != nil {
+		for _, u := range out.Users {
+			if u.UserId != nil {
+				ids = append(ids, *u.UserId)
+			}
 		}
 	}
-	return nil, nil
-}
-
-// findGroupByName looks up a group by name, used right after creation since
-// v1GroupsPut does not return the created group (and therefore not its
-// server-assigned ID).
-func (r *groupResource) findGroupByName(ctx context.Context, name string) (*graphiant.IamGroup, error) {
-	out, httpRes, err := r.client.api.DefaultAPI.V1GroupsGet(ctx).Authorization(r.client.authHeader()).Execute()
-	defer closeBody(httpRes)
-	if err != nil {
-		return nil, err
-	}
-	if out == nil {
-		return nil, nil
-	}
-	for _, g := range out.GetGroups() {
-		if g.GetName() == name {
-			return &g, nil
-		}
-	}
-	return nil, nil
+	return types.SetValueFrom(ctx, types.StringType, ids)
 }
 
 func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -217,48 +345,50 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
-	tflog.Debug(ctx, "creating group", map[string]any{"name": plan.Name.ValueString()})
-
-	body := graphiant.NewV1GroupsPutRequest(plan.Description.ValueString(), plan.Name.ValueString())
-	if v := strPtr(plan.GroupType); v != nil {
-		body.SetGroupType(*v)
-	}
-	if v := strPtr(plan.GroupId); v != nil {
-		body.SetGroupId(*v)
-	}
-	if v := boolPtr(plan.ManagesEnterprises); v != nil {
-		body.SetManagesEnterprises(*v)
-	}
-	if v := int64Ptr(plan.TimeWindowStart); v != nil {
-		body.SetTimeWindowStart(*v)
-	}
-	if v := int64Ptr(plan.TimeWindowEnd); v != nil {
-		body.SetTimeWindowEnd(*v)
-	}
-	if plan.Permissions != nil {
-		body.SetPermissions(*expandPermissions(plan.Permissions))
+	perms, diags := permissionsToSDK(ctx, plan.Permissions)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	httpRes, err := r.client.api.DefaultAPI.V1GroupsPut(ctx).Authorization(r.client.authHeader()).V1GroupsPutRequest(*body).Execute()
-	defer closeBody(httpRes)
+	body := sdk.V1GroupsPutRequest{
+		Description:        plan.Description.ValueString(),
+		Name:               plan.Name.ValueString(),
+		GroupId:            plan.GroupID.ValueStringPointer(),
+		GroupType:          plan.GroupType.ValueStringPointer(),
+		ManagesEnterprises: plan.ManagesEnterprises.ValueBoolPointer(),
+		Permissions:        perms,
+		TimeWindowStart:    plan.TimeWindowStart.ValueInt64Pointer(),
+		TimeWindowEnd:      plan.TimeWindowEnd.ValueInt64Pointer(),
+	}
+
+	httpResp, err := r.pd.api.DefaultAPI.V1GroupsPut(ctx).
+		Authorization(r.pd.token).
+		V1GroupsPutRequest(body).
+		Execute()
+	closeBody(httpResp)
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating group", apiErrorDetail(err))
+		resp.Diagnostics.AddError("Unable to create group", apiErrorDetail(err))
 		return
 	}
 
-	group, err := r.findGroupByName(ctx, plan.Name.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Error reading back created group", apiErrorDetail(err))
-		return
-	}
-	if group == nil {
-		resp.Diagnostics.AddError("Error creating group", "the group was created but could not be found afterwards by name")
+	group, diags2 := r.findGroupByNameAndDescription(ctx, plan.Name.ValueString(), plan.Description.ValueString())
+	resp.Diagnostics.Append(diags2...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(r.flatten(ctx, group, &plan)...)
+	resp.Diagnostics.Append(plan.applyGroup(ctx, group)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(r.syncMembers(ctx, plan.ID.ValueString(), plan.Members)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-	tflog.Trace(ctx, "created group", map[string]any{"id": plan.Id.ValueString()})
 }
 
 func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -268,73 +398,84 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		return
 	}
 
-	tflog.Debug(ctx, "reading group", map[string]any{"id": state.Id.ValueString()})
-
-	group, err := r.findGroup(ctx, state.Id.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Error reading group", apiErrorDetail(err))
+	group, found, diags := r.findGroupByID(ctx, state.ID.ValueString())
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if group == nil {
-		tflog.Debug(ctx, "group no longer exists, removing from state", map[string]any{"id": state.Id.ValueString()})
+	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
 
-	resp.Diagnostics.Append(r.flatten(ctx, group, &state)...)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-}
-
-func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state groupResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	resp.Diagnostics.Append(state.applyGroup(ctx, group)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	tflog.Debug(ctx, "updating group", map[string]any{"id": state.Id.ValueString()})
+	members, diags3 := r.readMembers(ctx, state.ID.ValueString())
+	resp.Diagnostics.Append(diags3...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state.Members = members
 
-	body := graphiant.NewV1GroupsIdPatchRequestWithDefaults()
-	if v := strPtr(plan.Description); v != nil {
-		body.SetDescription(*v)
-	}
-	if v := strPtr(plan.Name); v != nil {
-		body.SetDisplayName(*v)
-	}
-	if v := strPtr(plan.GroupType); v != nil {
-		body.SetGroupType(*v)
-	}
-	if v := int64Ptr(plan.TimeWindowStart); v != nil {
-		body.SetTimeWindowStart(*v)
-	}
-	if v := int64Ptr(plan.TimeWindowEnd); v != nil {
-		body.SetTimeWindowEnd(*v)
-	}
-	if plan.Permissions != nil {
-		body.SetPermissions(*expandPermissions(plan.Permissions))
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan groupResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	httpRes, err := r.client.api.DefaultAPI.V1GroupsIdPatch(ctx, state.Id.ValueString()).Authorization(r.client.authHeader()).V1GroupsIdPatchRequest(*body).Execute()
-	defer closeBody(httpRes)
+	perms, diags := permissionsToSDK(ctx, plan.Permissions)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	body := sdk.V1GroupsIdPatchRequest{
+		Description:     plan.Description.ValueStringPointer(),
+		DisplayName:     plan.Name.ValueStringPointer(),
+		GroupType:       plan.GroupType.ValueStringPointer(),
+		Permissions:     perms,
+		TimeWindowStart: plan.TimeWindowStart.ValueInt64Pointer(),
+		TimeWindowEnd:   plan.TimeWindowEnd.ValueInt64Pointer(),
+	}
+
+	httpResp, err := r.pd.api.DefaultAPI.V1GroupsIdPatch(ctx, plan.ID.ValueString()).
+		Authorization(r.pd.token).
+		V1GroupsIdPatchRequest(body).
+		Execute()
+	closeBody(httpResp)
 	if err != nil {
-		resp.Diagnostics.AddError("Error updating group", apiErrorDetail(err))
+		resp.Diagnostics.AddError("Unable to update group", apiErrorDetail(err))
 		return
 	}
 
-	group, err := r.findGroup(ctx, state.Id.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Error reading back updated group", apiErrorDetail(err))
+	group, found, diags2 := r.findGroupByID(ctx, plan.ID.ValueString())
+	resp.Diagnostics.Append(diags2...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if group == nil {
-		resp.Diagnostics.AddError("Error updating group", "the group was updated but could not be found afterwards")
+	if !found {
+		resp.Diagnostics.AddError("Unable to update group", "group no longer exists")
 		return
 	}
 
-	resp.Diagnostics.Append(r.flatten(ctx, group, &plan)...)
+	resp.Diagnostics.Append(plan.applyGroup(ctx, group)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(r.syncMembers(ctx, plan.ID.ValueString(), plan.Members)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-	tflog.Trace(ctx, "updated group", map[string]any{"id": plan.Id.ValueString()})
 }
 
 func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -344,12 +485,10 @@ func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 		return
 	}
 
-	tflog.Debug(ctx, "deleting group", map[string]any{"id": state.Id.ValueString()})
-
-	httpRes, err := r.client.api.DefaultAPI.V1GroupsIdDelete(ctx, state.Id.ValueString()).Authorization(r.client.authHeader()).Execute()
-	defer closeBody(httpRes)
+	httpResp, err := r.pd.api.DefaultAPI.V1GroupsIdDelete(ctx, state.ID.ValueString()).Authorization(r.pd.token).Execute()
+	closeBody(httpResp)
 	if err != nil {
-		resp.Diagnostics.AddError("Error deleting group", apiErrorDetail(err))
+		resp.Diagnostics.AddError("Unable to delete group", apiErrorDetail(err))
 	}
 }
 

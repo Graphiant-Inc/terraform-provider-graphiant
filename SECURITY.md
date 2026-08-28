@@ -2,18 +2,19 @@
 
 ## Supported Versions
 
-This provider has not yet had a tagged release. Until the first release is
-published to the Terraform Registry, only the `main` branch is supported with
-security fixes.
+This provider's version tracks the Graphiant platform/SDK release it targets
+(see [CHANGELOG.md](CHANGELOG.md)) rather than an independent SemVer
+sequence. Security fixes are applied to the latest released version; we
+recommend always running the latest release.
 
-| Version | Supported          | Notes                          |
-|---------|--------------------|---------------------------------|
-| main    | :white_check_mark: | Pre-release, active development |
+| Version | Supported          | Notes                 |
+|---------|--------------------|------------------------|
+| 26.8.0  | :white_check_mark: | First tagged release   |
+| main    | :white_check_mark: | Active development     |
 
-Once versioned releases begin, this table will track supported release lines
-the same way [graphiant-sdk-go](https://github.com/Graphiant-Inc/graphiant-sdk-go/blob/main/SECURITY.md)
-does, and we recommend always using the latest release for the most recent
-security patches.
+This table will be updated as new versions are released, the same way
+[graphiant-sdk-go](https://github.com/Graphiant-Inc/graphiant-sdk-go/blob/main/SECURITY.md)
+tracks its own supported release lines.
 
 ## Reporting a Vulnerability
 
@@ -59,8 +60,9 @@ vulnerability, please follow these steps:
 
 This provider authenticates to the Graphiant API with either a static access
 token or a username/password pair, resolved by
-[`internal/provider/client.go`](internal/provider/client.go). All three are
-marked `Sensitive` in the provider schema, but Terraform still writes resolved
+[`internal/provider/client.go`](internal/provider/client.go). `access_token`
+and `password` are marked `Sensitive` in the provider schema (`username` is
+not, since it's not a secret on its own), but Terraform still writes resolved
 values to plan/state files in plaintext, so treat those files as secrets too.
 
 - **Never commit secrets**: Never commit `.tfvars`, `.tfstate`, or provider
