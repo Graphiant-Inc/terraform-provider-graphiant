@@ -104,7 +104,7 @@ func (p *GraphiantProvider) Configure(ctx context.Context, req provider.Configur
 			resp.Diagnostics.AddError(
 				"Unable to resolve Graphiant credentials",
 				"Set access_token or username/password in the provider configuration block, or set "+
-					"GRAPHIANT_ACCESS_TOKEN (or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD) in the environment: "+err.Error(),
+					"GRAPHIANT_ACCESS_TOKEN (or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD) in the environment: "+apiErrorDetail(err),
 			)
 			return
 		}

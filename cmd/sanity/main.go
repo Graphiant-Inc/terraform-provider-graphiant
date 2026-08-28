@@ -21,6 +21,19 @@ import (
 	sdk "github.com/Graphiant-Inc/graphiant-sdk-go"
 )
 
+// apiErrorDetail builds a diagnostic-friendly message from an SDK call error,
+// including the raw response body when the SDK captured one (it carries the
+// server's actual error text, which the bare Go error usually doesn't).
+func apiErrorDetail(err error) string {
+	var apiErr *sdk.GenericOpenAPIError
+	if errors.As(err, &apiErr) {
+		if body := apiErr.Body(); len(body) > 0 {
+			return fmt.Sprintf("%s: %s", apiErr.Error(), string(body))
+		}
+	}
+	return err.Error()
+}
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "sanity check failed:", err)
@@ -47,8 +60,8 @@ func run() error {
 
 	token, err := sdk.AuthorizationBearerFromEnvOrLogin(ctx, client)
 	if err != nil {
-		return fmt.Errorf("authenticating (set %s, or %s + %s): %w",
-			sdk.EnvAccessToken, sdk.EnvUsername, sdk.EnvPassword, err)
+		return fmt.Errorf("authenticating (set %s, or %s + %s): %s",
+			sdk.EnvAccessToken, sdk.EnvUsername, sdk.EnvPassword, apiErrorDetail(err))
 	}
 	fmt.Println("Login OK.")
 
@@ -57,7 +70,7 @@ func run() error {
 		defer func() { _ = httpResp.Body.Close() }()
 	}
 	if err != nil {
-		return fmt.Errorf("listing edge summary: %w", err)
+		return fmt.Errorf("listing edge summary: %s", apiErrorDetail(err))
 	}
 	if out == nil {
 		return errors.New("listing edge summary: empty response")
