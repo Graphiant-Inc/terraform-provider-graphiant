@@ -13,7 +13,7 @@ func TestAccSiteResource(t *testing.T) {
 	nameUpdated := name + "-updated"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

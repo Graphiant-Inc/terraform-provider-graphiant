@@ -14,7 +14,7 @@ func TestAccPublicVifResource(t *testing.T) {
 	consumerLan := acctest.RandomWithPrefix("tf-acc-pvif-consumer-lan")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

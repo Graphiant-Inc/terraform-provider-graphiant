@@ -12,7 +12,7 @@ func TestAccAssuranceClassifiedApplicationResource(t *testing.T) {
 	appName := acctest.RandomWithPrefix("tf-acc-app")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

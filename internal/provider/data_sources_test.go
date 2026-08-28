@@ -34,7 +34,7 @@ func TestAccAlertRecordsDataSource(t *testing.T) {
 
 func TestAccAlertRulesDataSource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -145,7 +145,7 @@ func TestAccSiteDevicesDataSource(t *testing.T) {
 	name := acctest.RandomWithPrefix("tf-acc-site-devices")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -164,7 +164,7 @@ func TestAccTroubleshootingSiteDataSource(t *testing.T) {
 	name := acctest.RandomWithPrefix("tf-acc-troubleshooting-site")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheckDisabled(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

@@ -339,6 +339,17 @@ only runs locally once a maintainer has edited the placeholder for their own
 tenant and opted in via that env var. Document the placeholder in a comment
 either way.
 
+**Temporarily disabling a test.** If a test needs to stop running in CI for a
+period (e.g. investigating a live-tenant failure) without deleting it, use
+`testAccPreCheckHardcoded`'s sibling `testAccPreCheckDisabled` instead of
+`testAccPreCheck`. Same shape: the test never runs automatically in CI
+(`test.yml`'s `acceptance` job never sets `GRAPHIANT_ACC_RUN_DISABLED`) and
+only runs locally once opted in via that env var. Prefer this over adding a
+`-skip` flag to the `go test` invocation in `test.yml` — keeping the skip on
+the test itself (with a comment explaining why) keeps the reason visible next
+to the test instead of buried in CI config, and self-documents when it's safe
+to remove.
+
 ### Sanity check (no Terraform required)
 
 Before building the provider and setting up a dev override, `cmd/sanity`
