@@ -378,13 +378,8 @@ This writes `docs/index.md`, `docs/resources/*.md`, and `docs/data-sources/*.md`
   [How-to: run the acceptance tests](#how-to-run-the-acceptance-tests) below.
 - **Sanity checks** (no `.tf` config or CI wiring needed) — two lightweight,
   local-only smoke tests confirm credentials/connectivity and the provider
-  binary work before you reach for the full acceptance suite:
-
-  ```bash
-  export GRAPHIANT_ACCESS_TOKEN="..."   # or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD
-  make sanity      # talks to the SDK directly — logs in, lists the edge summary
-  make sanity-tf   # same check, but through the real provider binary + Terraform CLI
-  ```
+  binary work before you reach for the full acceptance suite. See
+  [How-to: run the sanity checks](#how-to-run-the-sanity-checks) below.
 
 ## How-tos
 
@@ -414,6 +409,49 @@ terraform import graphiant_alert_integration.pagerduty 1:98765
 descriptions for why (no get-by-id endpoint, or the resource is action-shaped
 rather than a real object).
 
+### How-to: run the sanity checks
+
+Before reaching for the full acceptance suite, two lightweight, local-only
+checks confirm credentials/connectivity and the provider binary work.
+Neither needs `TF_ACC=1`, and neither writes or deletes anything in your
+tenant — both only read the edge summary.
+
+**`make sanity`** — talks to the SDK directly (`cmd/sanity`), with no
+Terraform involved at all. Fastest way to confirm your credentials and
+network access to the Graphiant API work:
+
+```bash
+export GRAPHIANT_ACCESS_TOKEN="..."   # or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD
+export GRAPHIANT_API_HOST="https://api.graphiant.com"   # optional, this is the default
+
+make sanity
+```
+
+It resolves auth exactly like the provider's own `Configure` does, logs in,
+and prints a table of the current edge summary (device ID, hostname, status,
+role, site). Fails fast with a clear message if no credentials are set.
+
+**`make sanity-tf`** — goes through the real provider binary and the real
+Terraform plugin protocol instead (`scripts/terraform-sanity.sh`), confirming
+the compiled provider itself behaves correctly end to end, not just that
+credentials/connectivity work:
+
+```bash
+export GRAPHIANT_ACCESS_TOKEN="..."   # or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD
+
+make sanity-tf
+```
+
+Requires `terraform` on your `PATH`. It builds the provider binary, wires up
+a **throwaway** CLI config with a
+[dev override](https://developer.hashicorp.com/terraform/cli/config/config-file#development-overrides-for-provider-developers)
+pointing at that binary (never touches your real `~/.terraformrc`), then runs
+`terraform apply` against `scripts/terraform-sanity/main.tf` (a
+`graphiant_edges` data source plus outputs) — skipping `terraform init`,
+since dev overrides make it unnecessary. All `.terraform/`, lock file, and
+state artifacts it creates are removed automatically on exit, even on
+failure.
+
 ### How-to: run the acceptance tests
 
 Acceptance tests are gated on `TF_ACC=1` and credentials — without both, they
@@ -427,10 +465,16 @@ export GRAPHIANT_API_HOST="https://api.graphiant.com"
 go test ./internal/provider/... -run TestAccSiteResource -v
 ```
 
-Some tests reference placeholder tenant-specific ids (device/site/region ids,
-etc., called out in a comment at the top of the test file) — replace those
-with real ids from your own test tenant before running against it. Never run
-these against a production tenant: they create and delete real objects.
+Never run these against a production tenant: they create and delete real
+objects. Most tests are fully self-contained (random names, and any needed
+foreign-key id — a LAN segment, a site, a region — is created or looked up
+within the test itself), so they're also safe to run more than once in
+parallel. A handful reference an object this provider has no way to create
+on demand (a physical device, a prefix set/routing policy, an enterprise
+identity) — these use `testAccPreCheckHardcoded` instead of the standard
+`PreCheck` and never run in CI. To run one locally: edit the hardcoded
+placeholder in that test file to a real id from your own test tenant, then
+set `GRAPHIANT_ACC_HARDCODED_IDS=1` in addition to the credentials above.
 
 ### How-to: look up reference/platform ids before writing config
 

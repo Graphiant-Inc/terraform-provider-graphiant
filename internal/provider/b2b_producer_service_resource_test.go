@@ -8,17 +8,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-// service_lan_segment/sites reference placeholders that only resolve on a
-// specific test tenant; adjust for your own.
 func TestAccB2bProducerServiceResource(t *testing.T) {
 	name := acctest.RandomWithPrefix("tf-acc-b2b-producer")
+	lanSegmentName := acctest.RandomWithPrefix("tf-acc-b2b-producer-lan")
+	siteName := acctest.RandomWithPrefix("tf-acc-b2b-producer-site")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccB2bProducerServiceResourceConfig(name, "peering description"),
+				Config: testAccB2bProducerServiceResourceConfig(name, lanSegmentName, siteName, "peering description"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("graphiant_b2b_producer_service.test", "service_name", name),
 					resource.TestCheckResourceAttr("graphiant_b2b_producer_service.test", "policy.description", "peering description"),
@@ -31,7 +31,7 @@ func TestAccB2bProducerServiceResource(t *testing.T) {
 				ImportStateVerify: true,
 			},
 			{
-				Config: testAccB2bProducerServiceResourceConfig(name, "updated description"),
+				Config: testAccB2bProducerServiceResourceConfig(name, lanSegmentName, siteName, "updated description"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("graphiant_b2b_producer_service.test", "policy.description", "updated description"),
 				),
@@ -40,18 +40,35 @@ func TestAccB2bProducerServiceResource(t *testing.T) {
 	})
 }
 
-func testAccB2bProducerServiceResourceConfig(name, description string) string {
+// service_lan_segment and sites both reference throwaway graphiant_lan_segment/
+// graphiant_site resources created in this same config, rather than hardcoded ids.
+func testAccB2bProducerServiceResourceConfig(name, lanSegmentName, siteName, description string) string {
 	return fmt.Sprintf(`
+resource "graphiant_lan_segment" "test" {
+  name = %[2]q
+}
+
+resource "graphiant_site" "test" {
+  name  = %[3]q
+  notes = "created by terraform acceptance tests"
+
+  location {
+    city         = "San Jose"
+    state_code   = "CA"
+    country_code = "US"
+  }
+}
+
 resource "graphiant_b2b_producer_service" "test" {
   service_name = %[1]q
   service_type = "peering_service"
 
   policy = {
-    description         = %[2]q
-    service_lan_segment = 100
+    description         = %[4]q
+    service_lan_segment = graphiant_lan_segment.test.id
 
     sites = [
-      { sites = [12345] },
+      { sites = [graphiant_site.test.id] },
     ]
 
     prefix_tags = [
@@ -65,5 +82,5 @@ resource "graphiant_b2b_producer_service" "test" {
     }
   }
 }
-`, name, description)
+`, name, lanSegmentName, siteName, description)
 }

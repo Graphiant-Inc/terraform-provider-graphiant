@@ -11,7 +11,7 @@ SemVer sequence starting from `0.1.0`/`1.0.0` — see
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how that plays out when
 cutting a new release.
 
-## 26.8.0
+## 26.8.0 (August 28, 2026)
 
 NOTES:
 

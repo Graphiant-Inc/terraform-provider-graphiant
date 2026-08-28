@@ -29,3 +29,21 @@ func testAccPreCheck(t *testing.T) {
 	}
 	t.Skip("Acceptance tests require GRAPHIANT_ACCESS_TOKEN, or GRAPHIANT_USERNAME + GRAPHIANT_PASSWORD, to be set")
 }
+
+// testAccPreCheckHardcoded gates tests that reference a hardcoded id/serial for an
+// object this provider has no way to create on demand (a physical device, a
+// platform-fixed catalog entry with no write path, or the caller's own enterprise
+// identity) — so, unlike every other acceptance test, they cannot be made
+// self-contained with a random name. They therefore never run automatically in CI
+// (see the acceptance job in .github/workflows/test.yml, which never sets this
+// var) and only run locally once a maintainer has edited the placeholder id in the
+// test file to point at a real object in their own test tenant and opted in here.
+func testAccPreCheckHardcoded(t *testing.T) {
+	t.Helper()
+	testAccPreCheck(t)
+	if os.Getenv("GRAPHIANT_ACC_HARDCODED_IDS") == "" {
+		t.Skip("This test references a hardcoded id/serial for an object this provider can't create on demand " +
+			"(see the comment at the top of this test file). It never runs in CI. To run it locally: edit the " +
+			"placeholder to a real object in your own test tenant, then set GRAPHIANT_ACC_HARDCODED_IDS=1.")
+	}
+}

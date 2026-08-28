@@ -40,14 +40,20 @@ func TestAccB2bMatchResource(t *testing.T) {
 	})
 }
 
+// service_lan_segment/lan_segment both reference a throwaway graphiant_lan_segment
+// created in this same config, rather than a hardcoded id.
 func testAccB2bMatchResourceConfig(prefix, consumerPrefix string) string {
 	return fmt.Sprintf(`
+resource "graphiant_lan_segment" "test" {
+  name = "%[1]s-lan"
+}
+
 resource "graphiant_b2b_producer_service" "test" {
   service_name = "%[1]s-svc"
   service_type = "peering_service"
 
   policy = {
-    service_lan_segment = 100
+    service_lan_segment = graphiant_lan_segment.test.id
   }
 }
 
@@ -65,7 +71,7 @@ resource "graphiant_b2b_match" "test" {
 
   match = {
     service_id        = graphiant_b2b_producer_service.test.id
-    lan_segment       = 100
+    lan_segment       = graphiant_lan_segment.test.id
     consumer_prefixes = [%[2]q]
   }
 }
