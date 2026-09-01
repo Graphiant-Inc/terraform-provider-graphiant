@@ -6,27 +6,72 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Existing tag to (re)build and publish (e.g. v26.8.0)'
+      version:
+        description: 'Version to release (e.g. 26.8.0 or v26.8.0) — creates the tag if it does not already exist'
         required: true
         type: string
-
-permissions:
-  contents: write
 
 jobs:
   goreleaser:
     name: Build, sign, and publish release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     steps:
-      # The workflow_dispatch `tag` input above is a manual fallback for
-      # re-running a publish against an already-pushed tag (e.g. retrying
-      # after a failure), since the push trigger above only fires once, at
-      # the moment the tag is first pushed.
-      - uses: actions/checkout@v4
+      # Only for workflow_dispatch: a plain tag push is already gated by
+      # whatever branch/tag protection the repo enforces at the git level.
+      - name: Check user permissions
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          PERMISSION=$(curl -s -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission" | \
+            jq -r '.permission')
+
+          if [ "$PERMISSION" != "admin" ] && [ "$PERMISSION" != "maintain" ]; then
+            echo "❌ Error: Only repository admins and maintainers can trigger this workflow."
+            echo "   Current user: ${{ github.actor }}"
+            echo "   Permission level: $PERMISSION"
+            echo "   Required: admin or maintain"
+            exit 1
+          fi
+
+          echo "✅ User ${{ github.actor }} has permission level: $PERMISSION"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag || github.ref }}
+
+      # Only for workflow_dispatch: a tag push already checks out at the tag
+      # itself, so there's nothing to create. Kept in the same job as the
+      # GoReleaser steps below (rather than a separate workflow) so creating
+      # the tag here can flow straight into publishing it, with no reliance
+      # on that push re-triggering another workflow — GITHUB_TOKEN-authored
+      # pushes deliberately don't (GitHub's anti-recursion protection).
+      - name: Create and push tag
+        if: github.event_name == 'workflow_dispatch'
+        id: tag
+        run: |
+          VERSION="${{ inputs.version }}"
+          # Ensure version starts with 'v'
+          if [[ ! "$VERSION" =~ ^v ]]; then
+            VERSION="v$VERSION"
+          fi
+
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "ℹ️  Tag $VERSION already exists, skipping tag creation"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$VERSION" -m "Release $VERSION"
+            git push origin "$VERSION"
+            echo "✅ Created and pushed tag: $VERSION"
+          fi
+
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+          git checkout "$VERSION"
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'

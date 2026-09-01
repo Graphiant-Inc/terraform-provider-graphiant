@@ -531,18 +531,25 @@ against the same SDK version, increment the patch component instead (e.g.
 binaries via [GoReleaser](https://goreleaser.com) (per
 [`.goreleaser.yml`](.goreleaser.yml)), signs the checksum file with GPG
 (required for the Terraform Registry), and publishes a GitHub release with
-everything attached. To cut a release:
+everything attached. It triggers either way:
 
-```bash
-git tag v26.8.0
-git push origin v26.8.0
-```
+- **Push a tag matching `v*`** (e.g. `git tag v26.8.0 && git push origin
+  v26.8.0`) — goes straight to the build/sign/publish steps.
+- **Run it manually** from the Actions tab (`workflow_dispatch`, with a
+  `version` input) — first checks that the caller has `admin` or `maintain`
+  permission on the repo, then creates and pushes the tag (a no-op if it
+  already exists) before building/signing/publishing, all in the same job.
+  Use this when you'd rather not tag locally, or want repo permissions to
+  gate who can cut a release. It also doubles as the way to retry a failed
+  publish against an already-pushed tag, since the push trigger only fires
+  once, at the moment a tag is first pushed.
 
-Pushing a tag matching `v*` triggers `publish.yml` automatically. It can also
-be run manually from the Actions tab (`workflow_dispatch`, with a `tag`
-input naming an already-pushed tag) — useful for retrying a failed publish
-without re-tagging, since the push trigger only fires once, at the moment
-the tag is first pushed.
+Tag creation and publishing deliberately live in one job rather than two
+separate workflows: a tag pushed with the default `GITHUB_TOKEN` (as the
+`workflow_dispatch` path does) doesn't trigger another workflow's `push`
+event — GitHub excludes `GITHUB_TOKEN`-authenticated pushes from that,
+as an anti-recursion protection — so splitting tag creation and publishing
+into separate workflow files would silently strand the tag with no build.
 
 This requires two repository secrets that are not configured by default:
 
