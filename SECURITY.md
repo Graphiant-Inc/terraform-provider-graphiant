@@ -9,7 +9,7 @@ recommend always running the latest release.
 
 | Version | Supported          | Notes                 |
 |---------|--------------------|------------------------|
-| 26.8.0  | :white_check_mark: | First tagged release   |
+| 26.8.2  | :white_check_mark: | First tagged release   |
 | main    | :white_check_mark: | Active development     |
 
 This table will be updated as new versions are released, the same way
@@ -105,9 +105,6 @@ values to plan/state files in plaintext, so treat those files as secrets too.
 
 - **Race conditions**: Run `go test -race ./...` for any code that touches
   shared state.
-- **TLS**: The `insecure_skip_verify` provider attribute disables certificate
-  validation and should only be used against trusted lab/on-prem controllers,
-  never in production.
 - **Error handling**: Always check and surface errors via `diag.Diagnostics`
   rather than ignoring them.
 

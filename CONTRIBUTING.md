@@ -54,13 +54,15 @@ Thank you for your interest in contributing!
   `providerData`-extraction helpers shared across every resource/data source
 - `internal/provider/errors.go` — `apiErrorDetail`, which unwraps
   `graphiant_sdk.GenericOpenAPIError` for a diagnostic-friendly message
-- `internal/provider/*_resource.go` — one file per managed resource
-  (`site`, `user`, `group`, `app_list`, `content_filter`, `custom_app`,
-  `site_list`), each self-contained: schema, model struct,
+- `internal/provider/*_resource.go` — one file per managed resource (25 as
+  of this writing — see [README.md](README.md#resources--data-sources) for
+  the full list), each self-contained: schema, model struct,
   `Create`/`Read`/`Update`/`Delete`, `ImportState`
-- `internal/provider/device_data_source.go` — the one data source
-  (`graphiant_device`)
-- `internal/provider/provider_test.go` — schema-validation unit tests
+- `internal/provider/*_data_source.go` — one file per data source (14 as of
+  this writing — same README list)
+- `internal/provider/*_test.go` — schema-validation unit tests and
+  `TestAcc*` acceptance tests (see [Acceptance tests](#acceptance-tests)
+  below)
 - `examples/` — runnable `.tf` config per resource/data source, in the layout
   `terraform-plugin-docs`/the Terraform Registry expect
 - `docs/` — generated attribute reference; **do not hand-edit**, run
@@ -275,8 +277,9 @@ for a resource that also manages a related sub-collection). When adding one:
    `examples/data-sources/graphiant_<name>/data-source.tf`.
 8. Run `make docs` to regenerate `docs/` from the new schema and example —
    CI's `docs` job (`lint.yml`) fails the PR otherwise.
-9. Consider adding an acceptance test — see [Testing](#testing) below; this
-   provider doesn't have any yet, so there's no existing pattern to copy.
+9. Add a matching `TestAcc*` acceptance test — see
+   [Acceptance tests](#acceptance-tests) below for the existing pattern to
+   copy.
 
 ## Testing
 
@@ -522,10 +525,10 @@ deletes real objects; use a disposable test tenant.
 
 This provider's version tracks the Graphiant platform/SDK release it was
 built and tested against, rather than an independent SemVer sequence — e.g.
-`v26.8.0` pairs with `graphiant-sdk-go v26.8.0`. When re-syncing against a
+`v26.8.2` pairs with `graphiant-sdk-go v26.8.0`. When re-syncing against a
 new SDK release, tag with the matching version; for a provider-only fix
 against the same SDK version, increment the patch component instead (e.g.
-`v26.8.1`).
+`v26.8.3`).
 
 **[publish.yml](.github/workflows/publish.yml)** builds cross-platform
 binaries via [GoReleaser](https://goreleaser.com) (per
@@ -533,8 +536,8 @@ binaries via [GoReleaser](https://goreleaser.com) (per
 (required for the Terraform Registry), and publishes a GitHub release with
 everything attached. It triggers either way:
 
-- **Push a tag matching `v*`** (e.g. `git tag v26.8.0 && git push origin
-  v26.8.0`) — goes straight to the build/sign/publish steps.
+- **Push a tag matching `v*`** (e.g. `git tag v26.8.2 && git push origin
+  v26.8.2`) — goes straight to the build/sign/publish steps.
 - **Run it manually** from the Actions tab (`workflow_dispatch`, with a
   `version` input) — first checks that the caller has `admin` or `maintain`
   permission on the repo, then creates and pushes the tag (a no-op if it

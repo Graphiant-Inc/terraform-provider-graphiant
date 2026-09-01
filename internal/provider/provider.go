@@ -40,7 +40,12 @@ func (p *GraphiantProvider) Metadata(ctx context.Context, req provider.MetadataR
 
 func (p *GraphiantProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Interact with the Graphiant network platform API.",
+		Description: "The Graphiant provider is the official Terraform provider for provisioning and managing " +
+			"Graphiant Network-as-a-Service (NaaS) infrastructure as code: sites, IAM users and groups, " +
+			"gateways and data exchange (public VIF, local extranet, and B2B partner peering), software " +
+			"rollouts, alerting, and more. Authenticate with a static access token or a username/password " +
+			"pair, either in the provider block or via GRAPHIANT_ACCESS_TOKEN, or GRAPHIANT_USERNAME and " +
+			"GRAPHIANT_PASSWORD, environment variables.",
 		Attributes: map[string]schema.Attribute{
 			"host": schema.StringAttribute{
 				Optional: true,
