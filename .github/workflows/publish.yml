@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build and publish (e.g. v26.8.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,9 +19,14 @@ jobs:
     name: Build, sign, and publish release
     runs-on: ubuntu-latest
     steps:
+      # The workflow_dispatch `tag` input above is a manual fallback for
+      # re-running a publish against an already-pushed tag (e.g. retrying
+      # after a failure), since the push trigger above only fires once, at
+      # the moment the tag is first pushed.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'

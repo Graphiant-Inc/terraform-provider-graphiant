@@ -527,33 +527,24 @@ new SDK release, tag with the matching version; for a provider-only fix
 against the same SDK version, increment the patch component instead (e.g.
 `v26.8.1`).
 
-Tagging and publishing are split across two workflows:
+**[publish.yml](.github/workflows/publish.yml)** builds cross-platform
+binaries via [GoReleaser](https://goreleaser.com) (per
+[`.goreleaser.yml`](.goreleaser.yml)), signs the checksum file with GPG
+(required for the Terraform Registry), and publishes a GitHub release with
+everything attached. To cut a release:
 
-- **[release.yml](.github/workflows/release.yml)** only creates a tag and a
-  plain GitHub release for it — no binaries, no signing. Run it manually from
-  the Actions tab (`workflow_dispatch`, with a `version` input); it checks
-  that the caller has `admin` or `maintain` permission on the repo, then
-  creates and pushes a `v`-prefixed tag (a no-op if it already exists) and
-  creates a GitHub release for that tag (a no-op if one already exists).
-- **[publish.yml](.github/workflows/publish.yml)** does the actual publishing:
-  it triggers on any push of a tag matching `v*` — whether pushed by
-  `release.yml` above or by a plain `git tag v26.8.0 && git push origin
-  v26.8.0` — and builds cross-platform binaries via
-  [GoReleaser](https://goreleaser.com) (per [`.goreleaser.yml`](.goreleaser.yml)),
-  signs the checksum file with GPG (required for the Terraform Registry), and
-  attaches everything to the GitHub release for that tag. GoReleaser's
-  default `release.mode: keep-existing` means it reuses (rather than
-  duplicates or errors on) a release `release.yml` already created for the
-  same tag, so it doesn't matter which of the two runs first.
+```bash
+git tag v26.8.0
+git push origin v26.8.0
+```
 
-In other words: pushing a `v*` tag by any means always ends up fully
-published — there's currently no supported way to create a tag/release
-without triggering `publish.yml`. `release.yml` exists to make the
-tag-and-release step itself permission-gated and repeatable without a local
-`git push`, not to make publishing optional.
+Pushing a tag matching `v*` triggers `publish.yml` automatically. It can also
+be run manually from the Actions tab (`workflow_dispatch`, with a `tag`
+input naming an already-pushed tag) — useful for retrying a failed publish
+without re-tagging, since the push trigger only fires once, at the moment
+the tag is first pushed.
 
-`publish.yml` requires two repository secrets that are not configured by
-default:
+This requires two repository secrets that are not configured by default:
 
 - `GPG_PRIVATE_KEY` — an ASCII-armored GPG private key whose public key is
   registered with the Terraform Registry's publisher settings for this
