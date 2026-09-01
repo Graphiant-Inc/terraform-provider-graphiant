@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 26.8.0 or v26.8.0) — creates the tag if it does not already exist'
+        description: 'Version to release (e.g. 26.8.2 or v26.8.2) — creates the tag if it does not already exist'
         required: true
         type: string
 

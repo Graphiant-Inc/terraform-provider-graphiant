@@ -6,12 +6,12 @@ following the entry conventions from HashiCorp's
 entries are grouped as BREAKING CHANGES / NOTES / FEATURES / IMPROVEMENTS /
 BUG FIXES, each prefixed with the affected subsystem. Versioning tracks the
 Graphiant platform/SDK release the provider was built and tested against
-(e.g. `26.8.0` targets `graphiant-sdk-go` `v26.8.0`), not an independent
+(e.g. `26.8.2` targets `graphiant-sdk-go` `v26.8.0`), not an independent
 SemVer sequence starting from `0.1.0`/`1.0.0` — see
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how that plays out when
 cutting a new release.
 
-## 26.8.0 (August 28, 2026)
+## 26.8.2 (August 31, 2026)
 
 NOTES:
 
@@ -33,7 +33,7 @@ FEATURES:
 * provider: Provider scaffolding using `terraform-plugin-framework`, backed
   directly by [`graphiant-sdk-go`](https://github.com/Graphiant-Inc/graphiant-sdk-go)
   models (no intermediate codegen step). Configuration: `host`,
-  `access_token`, `username`, `password`, `insecure_skip_verify`, with
+  `access_token`, `username`, `password`, with
   `GRAPHIANT_API_HOST` / `GRAPHIANT_HOST` / `GRAPHIANT_ACCESS_TOKEN` /
   `GRAPHIANT_USERNAME` / `GRAPHIANT_PASSWORD` environment variable fallbacks.
 

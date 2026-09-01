@@ -4,21 +4,16 @@
 [![Terraform](https://img.shields.io/badge/terraform-1.0+-844FBA.svg)](https://developer.hashicorp.com/terraform/downloads)
 [![Terraform Plugin Framework](https://img.shields.io/badge/terraform--plugin--framework-1.19-844FBA.svg)](https://developer.hashicorp.com/terraform/plugin/framework)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://docs.graphiant.com/docs/graphiant-terraform-provider)
 [![Tests](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/test.yml/badge.svg)](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/test.yml)
 [![Lint](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/lint.yml/badge.svg)](https://github.com/Graphiant-Inc/terraform-provider-graphiant/actions/workflows/lint.yml)
 
 Infrastructure as Code for [Graphiant Network-as-a-Service (NaaS)](https://www.graphiant.com),
 built on [`terraform-plugin-framework`](https://developer.hashicorp.com/terraform/plugin/framework)
 and backed directly by the [`graphiant-sdk-go`](https://github.com/Graphiant-Inc/graphiant-sdk-go)
-client and models — each resource/data source is hand-written against the SDK,
-with no intermediate codegen step.
+client and models.
 
 Refer to [Graphiant Docs](https://docs.graphiant.com) to get started with Graphiant NaaS offerings.
-
-> **Status:** targets `graphiant-sdk-go` `v26.8.0` (see [CHANGELOG.md](CHANGELOG.md)).
-> This provider has not yet been published to the Terraform Registry — see
-> [Local development](#local-development) to build and use it against a real
-> Graphiant tenant in the meantime.
 
 ## Graphiant API Authentication
 
@@ -89,10 +84,13 @@ See [SECURITY.md](SECURITY.md) for credential-handling guidance.
 
 - **Official documentation**: [Graphiant Docs](https://docs.graphiant.com) —
   product context for the NaaS offerings this provider manages.
+- **Provider guide**: [Graphiant Terraform Provider](https://docs.graphiant.com/docs/graphiant-terraform-provider)
 - **REST API reference**: [Graphiant Portal REST API](https://docs.graphiant.com/docs/graphiant-portal-rest-api)
 - **Go SDK**: [graphiant-sdk-go](https://github.com/Graphiant-Inc/graphiant-sdk-go) —
   the client this provider is built on.
 - **Terraform Plugin Framework**: [developer.hashicorp.com](https://developer.hashicorp.com/terraform/plugin/framework)
+- **Terraform Registry**: [Graphiant Provider on the Terraform Registry](https://registry.terraform.io/providers/Graphiant-Inc/graphiant/latest) —
+  install instructions, version history, and generated docs.
 - **Provider reference docs**: generated under [`docs/`](docs/) via
   `tfplugindocs` — see [Full documentation](#full-documentation) below.
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) — version history and release notes.
@@ -158,7 +156,7 @@ create/read/update/delete endpoints:
   custom app classification rules. ~20 time-windowed analytics report
   endpoints in this domain are intentionally not exposed (see below).
 - **Alerts** (`graphiant_alert_integration`, `graphiant_alert_notification`) —
-  delivery integrations (Zendesk/webhook/PagerDuty/Opsgenie/Opsramp) and
+  delivery integrations (Zendesk/Slack webhook/PagerDuty/Opsgenie/Opsramp) and
   notification routing config.
 - **Route tags** (`graphiant_route_tag`) — enterprise route tags; create+delete
   only, no update endpoint exists.
@@ -250,10 +248,8 @@ resource "graphiant_user" "jane" {
 }
 ```
 
-> **Note:** until this provider is published to the Terraform Registry,
-> `terraform init` cannot download it from `source = "Graphiant-Inc/graphiant"`
-> — you'll need a [dev override](#local-development) pointing at a local
-> build.
+> **Note:** to build against an unreleased change instead of the published
+> version, use a [dev override](#local-development) pointing at a local build.
 
 ## Resources & data sources
 
@@ -350,8 +346,9 @@ examples/
 ```
 
 These are the same snippets `tfplugindocs` embeds in generated docs and on
-the Terraform Registry page once published — copy one directly into a `.tf`
-file to get started, or adapt the [Quick start](#quick-start) example above.
+the [Terraform Registry page](https://registry.terraform.io/providers/Graphiant-Inc/graphiant/latest) —
+copy one directly into a `.tf` file to get started, or adapt the
+[Quick start](#quick-start) example above.
 
 ## Full documentation
 
