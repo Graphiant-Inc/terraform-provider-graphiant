@@ -504,14 +504,14 @@ GitHub.
 | `GRAPHIANT_USERNAME` | `acceptance`, `sanity` | — | Not secret-sensitive; can be added as a repository **variable** instead of a secret. |
 | `GRAPHIANT_PASSWORD` | `acceptance`, `sanity` | — | Pair with `GRAPHIANT_USERNAME`. |
 | `GRAPHIANT_HOST` | `acceptance`, `sanity` | No | Defaults to `https://api.graphiant.com`; only add if your test tenant uses a different host. Can be a repository variable. |
-| `GPG_PRIVATE_KEY` | `release.yml` | Yes, to release | ASCII-armored private key whose public key is registered with the Terraform Registry's publisher settings for this provider. |
-| `PASSPHRASE` | `release.yml` | Yes, to release | Passphrase for `GPG_PRIVATE_KEY`. |
+| `GPG_PRIVATE_KEY` | `publish.yml` | Yes, to release | ASCII-armored private key whose public key is registered with the Terraform Registry's publisher settings for this provider. |
+| `PASSPHRASE` | `publish.yml` | Yes, to release | Passphrase for `GPG_PRIVATE_KEY`. |
 
-`GITHUB_TOKEN` is provided automatically by GitHub Actions for both
-workflows — never add it yourself. Without `GRAPHIANT_ACCESS_TOKEN` (or the
+`GITHUB_TOKEN` is provided automatically by GitHub Actions for every
+workflow — never add it yourself. Without `GRAPHIANT_ACCESS_TOKEN` (or the
 username/password pair), `acceptance` and `sanity` self-skip cleanly rather
 than fail — see [Testing](#testing) above. Without `GPG_PRIVATE_KEY`/
-`PASSPHRASE`, `release.yml` fails outright, since GoReleaser can't sign the
+`PASSPHRASE`, `publish.yml` fails outright, since GoReleaser can't sign the
 checksum file the Registry requires; see
 [Releasing](#releasing) below for how to generate and register that key.
 
@@ -527,23 +527,33 @@ new SDK release, tag with the matching version; for a provider-only fix
 against the same SDK version, increment the patch component instead (e.g.
 `v26.8.1`).
 
-**[release.yml](.github/workflows/release.yml)** builds cross-platform
-binaries via [GoReleaser](https://goreleaser.com) (per
-[`.goreleaser.yml`](.goreleaser.yml)), signs the checksum file with GPG
-(required for the Terraform Registry), and publishes a GitHub release. It
-triggers either way:
+Tagging and publishing are split across two workflows:
 
-- **Push a tag matching `v*`** (e.g. `git tag v26.8.0 && git push origin
-  v26.8.0`) — goes straight to the GoReleaser job, same as before this
-  workflow had a dispatch option.
-- **Run the workflow manually** from the Actions tab (`workflow_dispatch`,
-  with a `version` input) — a `tag` job first checks that the caller has
-  `admin` or `maintain` permission on the repo, then creates and pushes the
-  tag (a no-op if it already exists) before GoReleaser runs. Use this when
-  you'd rather not tag locally, or want repo permissions to gate who can cut
-  a release.
+- **[release.yml](.github/workflows/release.yml)** only creates a tag and a
+  plain GitHub release for it — no binaries, no signing. Run it manually from
+  the Actions tab (`workflow_dispatch`, with a `version` input); it checks
+  that the caller has `admin` or `maintain` permission on the repo, then
+  creates and pushes a `v`-prefixed tag (a no-op if it already exists) and
+  creates a GitHub release for that tag (a no-op if one already exists).
+- **[publish.yml](.github/workflows/publish.yml)** does the actual publishing:
+  it triggers on any push of a tag matching `v*` — whether pushed by
+  `release.yml` above or by a plain `git tag v26.8.0 && git push origin
+  v26.8.0` — and builds cross-platform binaries via
+  [GoReleaser](https://goreleaser.com) (per [`.goreleaser.yml`](.goreleaser.yml)),
+  signs the checksum file with GPG (required for the Terraform Registry), and
+  attaches everything to the GitHub release for that tag. GoReleaser's
+  default `release.mode: keep-existing` means it reuses (rather than
+  duplicates or errors on) a release `release.yml` already created for the
+  same tag, so it doesn't matter which of the two runs first.
 
-This requires two repository secrets that are not configured by default:
+In other words: pushing a `v*` tag by any means always ends up fully
+published — there's currently no supported way to create a tag/release
+without triggering `publish.yml`. `release.yml` exists to make the
+tag-and-release step itself permission-gated and repeatable without a local
+`git push`, not to make publishing optional.
+
+`publish.yml` requires two repository secrets that are not configured by
+default:
 
 - `GPG_PRIVATE_KEY` — an ASCII-armored GPG private key whose public key is
   registered with the Terraform Registry's publisher settings for this
