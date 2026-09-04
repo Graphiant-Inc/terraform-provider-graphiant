@@ -153,22 +153,26 @@ func (m *contentFilterResourceModel) applyConfig(ctx context.Context, cfg *sdk.M
 	}
 	m.LanNames = lanNames
 
-	rules := make([]contentFilterRuleModel, 0, len(cfg.Rules))
-	for _, rule := range cfg.Rules {
-		wildcards, d := types.ListValueFrom(ctx, types.StringType, rule.ExceptionWildcards)
-		if d.HasError() {
-			return d
+	if len(cfg.Rules) == 0 {
+		m.Rules = types.ListNull(types.ObjectType{AttrTypes: contentFilterRuleAttrTypes})
+	} else {
+		rules := make([]contentFilterRuleModel, 0, len(cfg.Rules))
+		for _, rule := range cfg.Rules {
+			wildcards, d := types.ListValueFrom(ctx, types.StringType, rule.ExceptionWildcards)
+			if d.HasError() {
+				return d
+			}
+			rules = append(rules, contentFilterRuleModel{
+				DomainCategoryID:   types.Int64PointerValue(rule.DomainCategoryId),
+				ExceptionWildcards: wildcards,
+			})
 		}
-		rules = append(rules, contentFilterRuleModel{
-			DomainCategoryID:   types.Int64PointerValue(rule.DomainCategoryId),
-			ExceptionWildcards: wildcards,
-		})
+		rulesList, diags2 := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: contentFilterRuleAttrTypes}, rules)
+		if diags2.HasError() {
+			return diags2
+		}
+		m.Rules = rulesList
 	}
-	rulesList, diags2 := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: contentFilterRuleAttrTypes}, rules)
-	if diags2.HasError() {
-		return diags2
-	}
-	m.Rules = rulesList
 
 	return nil
 }

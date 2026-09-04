@@ -469,9 +469,22 @@ within the test itself), so they're also safe to run more than once in
 parallel. A handful reference an object this provider has no way to create
 on demand (a physical device, a prefix set/routing policy, an enterprise
 identity) — these use `testAccPreCheckHardcoded` instead of the standard
-`PreCheck` and never run in CI. To run one locally: edit the hardcoded
-placeholder in that test file to a real id from your own test tenant, then
-set `GRAPHIANT_ACC_HARDCODED_IDS=1` in addition to the credentials above.
+`PreCheck` and never run in CI. To run one locally: point it at a real id
+from your own test tenant, then set `GRAPHIANT_ACC_HARDCODED_IDS=1` in
+addition to the credentials above. The device-related tests read that id
+from an environment variable instead of a hardcoded literal, so you can set
+it without editing the test file: `GRAPHIANT_ACC_DEVICE_ID` (device/
+troubleshooting_device data sources), `GRAPHIANT_ACC_DEVICE_BRINGUP_ID`
+(`graphiant_device_bringup`), `GRAPHIANT_ACC_DEVICE_CONFIG_ID`
+(`graphiant_device_config`), `GRAPHIANT_ACC_DEVICE_DECOMMISSION_SERIAL`
+(`graphiant_device_decommission`), and `GRAPHIANT_ACC_ENTERPRISE_ID`
+(`graphiant_site`, for an MSP-scoped token with access to more than one
+enterprise). Everything else in this category (the `alert_integration`
+enterprise, prefix set/routing policy ids) still requires editing the
+placeholder in its test file directly. `graphiant_site_devices`/
+`graphiant_troubleshooting_site`/`graphiant_extranet` no longer need any of
+this — they create their own throwaway `graphiant_site` now that site
+creation works and run under the standard `testAccPreCheck`.
 
 ### How-to: look up reference/platform ids before writing config
 

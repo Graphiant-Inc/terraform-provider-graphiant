@@ -146,7 +146,17 @@ func (m *customAppResourceModel) applyConfig(ctx context.Context, cfg *sdk.ManaV
 	m.Name = types.StringPointerValue(cfg.Name)
 	m.Description = types.StringPointerValue(cfg.Description)
 	m.URL = types.StringPointerValue(cfg.Url)
-	m.IPProtocol = types.StringPointerValue(cfg.IpProtocol)
+
+	// ip_protocol is Optional but not Computed, so an unset config must round-trip as
+	// null: the API doesn't omit this field when it was never set, it returns the
+	// literal sentinel "UnknownIPProtocol" (that enum's zero/unspecified value), which
+	// would otherwise fail Terraform's post-apply consistency check against the null
+	// plan value.
+	ipProtocol := cfg.IpProtocol
+	if ipProtocol != nil && *ipProtocol == "UnknownIPProtocol" {
+		ipProtocol = nil
+	}
+	m.IPProtocol = types.StringPointerValue(ipProtocol)
 
 	ipLists, diags := types.ListValueFrom(ctx, types.StringType, cfg.IpLists)
 	if diags.HasError() {
@@ -160,27 +170,31 @@ func (m *customAppResourceModel) applyConfig(ctx context.Context, cfg *sdk.ManaV
 	}
 	m.IPPrefixes = ipPrefixes
 
-	ranges := make([]customAppPortRangeModel, 0, len(cfg.PortRanges))
-	for _, pr := range cfg.PortRanges {
-		var lower, upper *int64
-		if pr.Lower != nil {
-			l := int64(*pr.Lower)
-			lower = &l
+	if len(cfg.PortRanges) == 0 {
+		m.PortRanges = types.ListNull(types.ObjectType{AttrTypes: customAppPortRangeAttrTypes})
+	} else {
+		ranges := make([]customAppPortRangeModel, 0, len(cfg.PortRanges))
+		for _, pr := range cfg.PortRanges {
+			var lower, upper *int64
+			if pr.Lower != nil {
+				l := int64(*pr.Lower)
+				lower = &l
+			}
+			if pr.Upper != nil {
+				u := int64(*pr.Upper)
+				upper = &u
+			}
+			ranges = append(ranges, customAppPortRangeModel{
+				Lower: types.Int64PointerValue(lower),
+				Upper: types.Int64PointerValue(upper),
+			})
 		}
-		if pr.Upper != nil {
-			u := int64(*pr.Upper)
-			upper = &u
+		portRanges, diags3 := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: customAppPortRangeAttrTypes}, ranges)
+		if diags3.HasError() {
+			return diags3
 		}
-		ranges = append(ranges, customAppPortRangeModel{
-			Lower: types.Int64PointerValue(lower),
-			Upper: types.Int64PointerValue(upper),
-		})
+		m.PortRanges = portRanges
 	}
-	portRanges, diags3 := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: customAppPortRangeAttrTypes}, ranges)
-	if diags3.HasError() {
-		return diags3
-	}
-	m.PortRanges = portRanges
 
 	return nil
 }

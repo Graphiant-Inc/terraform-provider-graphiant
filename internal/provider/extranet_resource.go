@@ -91,8 +91,10 @@ func (r *extranetResource) Schema(ctx context.Context, req resource.SchemaReques
 				Optional: true,
 			},
 			"type": schema.StringAttribute{
-				Optional:    true,
-				Description: "No enum documented in the SDK; passed through verbatim.",
+				Optional: true,
+				Computed: true,
+				Description: "No enum documented in the SDK; passed through verbatim. The API derives a " +
+					"value (e.g. \"device_local\") when left unset, so this is Computed to accept that.",
 			},
 			"shared_prefixes": schema.ListAttribute{
 				Optional:    true,
@@ -161,28 +163,44 @@ func buildExtranetTarget(ctx context.Context, obj types.Object) (*sdk.ManaV2Poli
 }
 
 func applyExtranetTarget(ctx context.Context, target *sdk.ManaV2PolicyTarget) (types.Object, diag.Diagnostics) {
-	if target == nil {
+	// The API can return a non-nil target with no excluded_devices/sites (e.g. for
+	// "branches" when the policy has none) instead of omitting it; collapse that
+	// back to null so an unconfigured attribute doesn't come back as an empty
+	// object, which the framework treats as an inconsistent apply result.
+	if target == nil || (len(target.ExcludedDevices) == 0 && len(target.Sites) == 0) {
 		return types.ObjectNull(extranetTargetAttrTypes), nil
 	}
-	deviceIDs := make([]int64, 0, len(target.ExcludedDevices))
-	for _, d := range target.ExcludedDevices {
-		if d.Id != nil {
-			deviceIDs = append(deviceIDs, *d.Id)
+	var devicesList types.List
+	if len(target.ExcludedDevices) == 0 {
+		devicesList = types.ListNull(types.Int64Type)
+	} else {
+		deviceIDs := make([]int64, 0, len(target.ExcludedDevices))
+		for _, d := range target.ExcludedDevices {
+			if d.Id != nil {
+				deviceIDs = append(deviceIDs, *d.Id)
+			}
+		}
+		var diags diag.Diagnostics
+		devicesList, diags = types.ListValueFrom(ctx, types.Int64Type, deviceIDs)
+		if diags.HasError() {
+			return types.ObjectNull(extranetTargetAttrTypes), diags
 		}
 	}
-	siteIDs := make([]int64, 0, len(target.Sites))
-	for _, s := range target.Sites {
-		if s.Id != nil {
-			siteIDs = append(siteIDs, *s.Id)
+	var sitesList types.List
+	if len(target.Sites) == 0 {
+		sitesList = types.ListNull(types.Int64Type)
+	} else {
+		siteIDs := make([]int64, 0, len(target.Sites))
+		for _, s := range target.Sites {
+			if s.Id != nil {
+				siteIDs = append(siteIDs, *s.Id)
+			}
 		}
-	}
-	devicesList, diags := types.ListValueFrom(ctx, types.Int64Type, deviceIDs)
-	if diags.HasError() {
-		return types.ObjectNull(extranetTargetAttrTypes), diags
-	}
-	sitesList, diags2 := types.ListValueFrom(ctx, types.Int64Type, siteIDs)
-	if diags2.HasError() {
-		return types.ObjectNull(extranetTargetAttrTypes), diags2
+		var diags2 diag.Diagnostics
+		sitesList, diags2 = types.ListValueFrom(ctx, types.Int64Type, siteIDs)
+		if diags2.HasError() {
+			return types.ObjectNull(extranetTargetAttrTypes), diags2
+		}
 	}
 	return types.ObjectValueFrom(ctx, extranetTargetAttrTypes, extranetTargetModel{ExcludedDevices: devicesList, Sites: sitesList})
 }
@@ -256,15 +274,19 @@ func (m *extranetResourceModel) applyPolicy(ctx context.Context, policy *sdk.Man
 		m.SharedSegment = types.Int64Null()
 	}
 
-	targetIDs := make([]int64, 0, len(policy.TargetSegments))
-	for _, vrf := range policy.TargetSegments {
-		if vrf.Id != nil {
-			targetIDs = append(targetIDs, *vrf.Id)
+	if len(policy.TargetSegments) == 0 {
+		m.TargetSegments = types.ListNull(types.Int64Type)
+	} else {
+		targetIDs := make([]int64, 0, len(policy.TargetSegments))
+		for _, vrf := range policy.TargetSegments {
+			if vrf.Id != nil {
+				targetIDs = append(targetIDs, *vrf.Id)
+			}
 		}
+		targetSegments, d2 := types.ListValueFrom(ctx, types.Int64Type, targetIDs)
+		diags.Append(d2...)
+		m.TargetSegments = targetSegments
 	}
-	targetSegments, d2 := types.ListValueFrom(ctx, types.Int64Type, targetIDs)
-	diags.Append(d2...)
-	m.TargetSegments = targetSegments
 
 	if policy.Auto != nil {
 		excluded, d3 := types.ListValueFrom(ctx, types.StringType, policy.Auto.ExcludedPrefixes)
@@ -275,8 +297,6 @@ func (m *extranetResourceModel) applyPolicy(ctx context.Context, policy *sdk.Man
 		})
 		diags.Append(d4...)
 		m.Auto = obj
-	} else {
-		m.Auto = types.ObjectNull(extranetAutoAttrTypes)
 	}
 
 	if policy.Manual != nil {
@@ -285,8 +305,6 @@ func (m *extranetResourceModel) applyPolicy(ctx context.Context, policy *sdk.Man
 		obj, d6 := types.ObjectValueFrom(ctx, extranetManualAttrTypes, extranetManualModel{Prefixes: prefixes})
 		diags.Append(d6...)
 		m.Manual = obj
-	} else {
-		m.Manual = types.ObjectNull(extranetManualAttrTypes)
 	}
 
 	source, d7 := applyExtranetTarget(ctx, policy.Source)

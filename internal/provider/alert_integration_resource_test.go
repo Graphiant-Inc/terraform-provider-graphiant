@@ -47,7 +47,7 @@ func testAccAlertIntegrationResourceConfig(nickName string) string {
 	return fmt.Sprintf(`
 resource "graphiant_alert_integration" "test" {
   enterprise       = 1
-  integration_type = "webhook"
+  integration_type = "webhook_url"
   nick_name        = %[1]q
   is_active        = true
 

@@ -42,7 +42,6 @@ func testAccAssuranceGlobalResourceConfig(name string, useAllSites bool) string 
 	return fmt.Sprintf(`
 resource "graphiant_assurance_global" "test" {
   name          = %[1]q
-  flex_algo     = "default"
   use_all_sites = %[2]t
 }
 `, name, useAllSites)

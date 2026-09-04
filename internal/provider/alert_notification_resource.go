@@ -147,13 +147,27 @@ func (m *alertNotificationResourceModel) applyRecord(ctx context.Context, rec *s
 	m.AlertType = types.StringPointerValue(rec.AlertType)
 	m.RuleID = types.StringPointerValue(rec.RuleId)
 
+	if m.RuleIDList.IsNull() && rec.RuleId != nil {
+		list, d := types.ListValueFrom(ctx, types.StringType, []string{*rec.RuleId})
+		diags.Append(d...)
+		m.RuleIDList = list
+	}
+
 	if rec.NotificationBody == nil {
 		return diags
 	}
 	b := rec.NotificationBody
 	m.Description = types.StringPointerValue(b.Description)
 	m.Duration = types.StringPointerValue(b.Duration)
-	m.Enabled = types.BoolPointerValue(b.Enabled)
+	// enabled is Optional+Computed: when left out of config, m.Enabled is
+	// Unknown here, and Terraform requires every Computed attribute to
+	// resolve to a known value after apply (Null counts as known, Unknown
+	// does not), so a nil b.Enabled must still resolve to BoolNull() then.
+	if b.Enabled != nil {
+		m.Enabled = types.BoolPointerValue(b.Enabled)
+	} else if m.Enabled.IsUnknown() {
+		m.Enabled = types.BoolNull()
+	}
 	m.Frequency = types.Int64PointerValue(b.Frequency)
 	m.MessageBody = types.StringPointerValue(b.MessageBody)
 

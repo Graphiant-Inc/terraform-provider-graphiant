@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -74,9 +75,17 @@ func (d *troubleshootingDeviceDataSource) Read(ctx context.Context, req datasour
 		return
 	}
 
+	now := time.Now()
+	recentTs := sdk.GoogleProtobufTimestamp{Seconds: sdk.PtrInt64(now.Unix())}
+	oldTs := sdk.GoogleProtobufTimestamp{Seconds: sdk.PtrInt64(now.Add(-1 * time.Hour).Unix())}
+	timeWindow := sdk.StatsmonTroubleshootingTimeWindow{
+		RecentTs: &recentTs,
+		OldTs:    &oldTs,
+	}
+
 	out, httpResp, err := d.pd.api.DefaultAPI.V1TroubleshootingDeviceDeviceIdPost(ctx, cfg.DeviceID.ValueInt64()).
 		Authorization(d.pd.token).
-		V1TroubleshootingDeviceDeviceIdPostRequest(sdk.V1TroubleshootingDeviceDeviceIdPostRequest{}).
+		V1TroubleshootingDeviceDeviceIdPostRequest(sdk.V1TroubleshootingDeviceDeviceIdPostRequest{TimeWindow: &timeWindow}).
 		Execute()
 	closeBody(httpResp)
 	if err != nil {

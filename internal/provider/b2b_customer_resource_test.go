@@ -19,7 +19,7 @@ func TestAccB2bCustomerResource(t *testing.T) {
 				Config: testAccB2bCustomerResourceConfig(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("graphiant_b2b_customer.test", "name", name),
-					resource.TestCheckResourceAttr("graphiant_b2b_customer.test", "type", "non-graphiant"),
+					resource.TestCheckResourceAttr("graphiant_b2b_customer.test", "type", "non_graphiant_peer"),
 					resource.TestCheckResourceAttrSet("graphiant_b2b_customer.test", "id"),
 				),
 			},
@@ -40,7 +40,7 @@ func testAccB2bCustomerResourceConfig(name string) string {
 	return fmt.Sprintf(`
 resource "graphiant_b2b_customer" "test" {
   name = %[1]q
-  type = "non-graphiant"
+  type = "non_graphiant_peer"
 
   invite = {
     admin_emails            = ["admin@tf-acc-test.example"]

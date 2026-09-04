@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -18,6 +19,7 @@ var (
 	_ resource.Resource                = &b2bProducerServiceResource{}
 	_ resource.ResourceWithConfigure   = &b2bProducerServiceResource{}
 	_ resource.ResourceWithImportState = &b2bProducerServiceResource{}
+	_ resource.ResourceWithModifyPlan  = &b2bProducerServiceResource{}
 )
 
 func NewB2bProducerServiceResource() resource.Resource {
@@ -98,6 +100,82 @@ func (r *b2bProducerServiceResource) Schema(ctx context.Context, req resource.Sc
 
 func (r *b2bProducerServiceResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	r.pd = configurePD(req.ProviderData, &resp.Diagnostics)
+}
+
+// ModifyPlan catches, at plan time, policy changes the backend is known to reject at
+// apply time for a peering_service: description, service_lan_segment, and sites are
+// immutable once created, and prefix_tags only supports appending new entries (an
+// existing entry can't be removed or have its tag changed). None of this is expressed
+// in the SDK/OpenAPI spec — it's a runtime-only business rule discovered via repeated
+// "X cannot be modified for peering_service" 500s — so it can't be enforced with a
+// RequiresReplace plan modifier (which would also destroy/recreate this service and
+// cascade into any graphiant_b2b_match referencing it by service_id). This instead
+// surfaces a clear plan-time error in place of a confusing apply-time 500.
+func (r *b2bProducerServiceResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return // create or destroy: nothing to compare against
+	}
+
+	var state, plan b2bProducerServiceResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() || state.ServiceType.ValueString() != "peering_service" {
+		return
+	}
+
+	var statePolicy, planPolicy b2bProducerPolicyModel
+	resp.Diagnostics.Append(state.Policy.As(ctx, &statePolicy, objectAsOptions)...)
+	resp.Diagnostics.Append(plan.Policy.As(ctx, &planPolicy, objectAsOptions)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	const immutableFieldMsg = "%s cannot be modified for a peering_service once created; the API will reject this " +
+		"change. Revert this field, or remove the resource from state and recreate it if the change is required."
+
+	if !statePolicy.Description.Equal(planPolicy.Description) {
+		resp.Diagnostics.AddAttributeError(path.Root("policy").AtName("description"),
+			"Immutable Field for peering_service", fmt.Sprintf(immutableFieldMsg, "description"))
+	}
+	if !statePolicy.ServiceLanSegment.Equal(planPolicy.ServiceLanSegment) {
+		resp.Diagnostics.AddAttributeError(path.Root("policy").AtName("service_lan_segment"),
+			"Immutable Field for peering_service", fmt.Sprintf(immutableFieldMsg, "service_lan_segment"))
+	}
+	if !statePolicy.Sites.Equal(planPolicy.Sites) {
+		resp.Diagnostics.AddAttributeError(path.Root("policy").AtName("sites"),
+			"Immutable Field for peering_service", fmt.Sprintf(immutableFieldMsg, "sites"))
+	}
+
+	var statePrefixTags, planPrefixTags []b2bPrefixTagModel
+	if !statePolicy.PrefixTags.IsNull() && !statePolicy.PrefixTags.IsUnknown() {
+		resp.Diagnostics.Append(statePolicy.PrefixTags.ElementsAs(ctx, &statePrefixTags, false)...)
+	}
+	if !planPolicy.PrefixTags.IsNull() && !planPolicy.PrefixTags.IsUnknown() {
+		resp.Diagnostics.Append(planPolicy.PrefixTags.ElementsAs(ctx, &planPrefixTags, false)...)
+	}
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	plannedByPrefix := make(map[string]b2bPrefixTagModel, len(planPrefixTags))
+	for _, t := range planPrefixTags {
+		plannedByPrefix[t.Prefix.ValueString()] = t
+	}
+	for _, existing := range statePrefixTags {
+		planned, stillPresent := plannedByPrefix[existing.Prefix.ValueString()]
+		switch {
+		case !stillPresent:
+			resp.Diagnostics.AddAttributeError(path.Root("policy").AtName("prefix_tags"),
+				"Immutable Field for peering_service",
+				fmt.Sprintf("prefix_tags entry %q cannot be removed for a peering_service once created; "+
+					"only appending new entries is supported.", existing.Prefix.ValueString()))
+		case !existing.Tag.Equal(planned.Tag):
+			resp.Diagnostics.AddAttributeError(path.Root("policy").AtName("prefix_tags"),
+				"Immutable Field for peering_service",
+				fmt.Sprintf("prefix_tags entry %q cannot be modified for a peering_service once created; "+
+					"only appending new entries is supported.", existing.Prefix.ValueString()))
+		}
+	}
 }
 
 func buildB2bProducerPolicy(ctx context.Context, obj types.Object) (sdk.ManaV2ExtranetServiceProducerPolicy, diag.Diagnostics) {
@@ -187,8 +265,41 @@ func (m *b2bProducerServiceResourceModel) applyFromGet(ctx context.Context, out 
 	if out.Policy != nil {
 		m.ServiceName = types.StringPointerValue(out.Policy.ServiceName)
 		m.ServiceType = types.StringPointerValue(out.Policy.ServiceType)
+
+		// The read endpoint does not echo nat_translation_mode back on the
+		// policy, so capture the value already known from plan/prior state
+		// before it gets overwritten below, and restore it if the API
+		// response omits it.
+		var priorNatMode types.Object
+		if !m.Policy.IsNull() && !m.Policy.IsUnknown() {
+			var prior b2bProducerPolicyModel
+			if d := m.Policy.As(ctx, &prior, objectAsOptions); !d.HasError() {
+				priorNatMode = prior.NatTranslationMode
+			}
+		}
+
 		policyObj, d := applyB2bProducerPolicy(ctx, out.Policy.Policy)
 		diags.Append(d...)
+		if diags.HasError() {
+			return diags
+		}
+
+		if (out.Policy.Policy == nil || out.Policy.Policy.NatTranslationMode == nil) &&
+			!priorNatMode.IsNull() && !priorNatMode.IsUnknown() {
+			var policyModel b2bProducerPolicyModel
+			diags.Append(policyObj.As(ctx, &policyModel, objectAsOptions)...)
+			if diags.HasError() {
+				return diags
+			}
+			policyModel.NatTranslationMode = priorNatMode
+			patched, d2 := types.ObjectValueFrom(ctx, b2bProducerPolicyAttrTypes, policyModel)
+			diags.Append(d2...)
+			if diags.HasError() {
+				return diags
+			}
+			policyObj = patched
+		}
+
 		m.Policy = policyObj
 	}
 	return diags
