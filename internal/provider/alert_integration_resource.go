@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -190,7 +191,18 @@ func (m *alertIntegrationResourceModel) applyIntegration(ctx context.Context, in
 	}
 	m.IntegrationType = types.StringPointerValue(in.Type)
 	m.NickName = types.StringPointerValue(in.NickName)
-	m.IsActive = types.BoolPointerValue(in.IsActive)
+	// This alertservice API has been observed (on the sibling alert_notification
+	// endpoint) omitting boolean fields entirely rather than sending false
+	// explicitly — don't let that null out a value we just set via Create/Update.
+	// But is_active is Optional+Computed: when left out of config, m.IsActive is
+	// Unknown here, and Terraform requires every Computed attribute to resolve to
+	// a known value after apply (Null counts as known, Unknown does not), so a
+	// nil in.IsActive must still resolve to BoolNull() in that case.
+	if in.IsActive != nil {
+		m.IsActive = types.BoolPointerValue(in.IsActive)
+	} else if m.IsActive.IsUnknown() {
+		m.IsActive = types.BoolNull()
+	}
 
 	details, diags := applyAlertIntegrationDetails(ctx, in.Details)
 	if diags.HasError() {
@@ -217,6 +229,44 @@ func (r *alertIntegrationResource) findByID(ctx context.Context, enterpriseID, i
 		}
 	}
 	return nil, false, diags
+}
+
+// findByNickName locates a just-created integration by nick_name rather than
+// the id V2IntegrationPost's response reports — that id has been observed
+// pointing at a pre-existing, unrelated integration instead of the new one,
+// so it can't be trusted immediately after create.
+func (r *alertIntegrationResource) findByNickName(ctx context.Context, enterpriseID int64, nickName string) (*sdk.AlertserviceIntegration, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	out, httpResp, err := r.pd.api.DefaultAPI.V2IntegrationGetallEnterpriseIdGet(ctx, enterpriseID).Authorization(r.pd.token).Execute()
+	closeBody(httpResp)
+	if err != nil {
+		diags.AddError("Unable to list alert integrations", apiErrorDetail(err))
+		return nil, diags
+	}
+	if out == nil {
+		diags.AddError("Unable to find created alert integration", "integration list came back empty")
+		return nil, diags
+	}
+	var matches []*sdk.AlertserviceIntegration
+	for i := range out.Integrations {
+		if out.Integrations[i].NickName != nil && *out.Integrations[i].NickName == nickName {
+			matches = append(matches, &out.Integrations[i])
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0], diags
+	case 0:
+		diags.AddError("Unable to find created alert integration", "no integration in the list matched the submitted nick_name")
+		return nil, diags
+	default:
+		diags.AddError(
+			"Ambiguous alert integration lookup",
+			fmt.Sprintf("%d integrations matched nick_name %q; the API's create response id can't be trusted, "+
+				"so this provider cannot disambiguate. Use a unique nick_name.", len(matches), nickName),
+		)
+		return nil, diags
+	}
 }
 
 func (r *alertIntegrationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -250,12 +300,22 @@ func (r *alertIntegrationResource) Create(ctx context.Context, req resource.Crea
 		resp.Diagnostics.AddError("Unable to create alert integration", apiErrorDetail(err))
 		return
 	}
-	if out == nil || out.Integration == nil || out.Integration.Id == nil {
+	if out == nil || out.Integration == nil {
 		resp.Diagnostics.AddError("Unable to create alert integration", "API returned an empty response")
 		return
 	}
 
-	resp.Diagnostics.Append(plan.applyIntegration(ctx, out.Integration)...)
+	// The create response's id has been observed pointing at a pre-existing,
+	// unrelated integration rather than the one just created, so it can't be
+	// trusted — locate the new record by nick_name instead, same as
+	// alert_notification's Create works around its own unreliable response.
+	got, diags2 := r.findByNickName(ctx, plan.Enterprise.ValueInt64(), plan.NickName.ValueString())
+	resp.Diagnostics.Append(diags2...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(plan.applyIntegration(ctx, got)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}

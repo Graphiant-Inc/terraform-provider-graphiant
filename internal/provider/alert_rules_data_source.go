@@ -74,7 +74,7 @@ func (d *alertRulesDataSource) Configure(ctx context.Context, req datasource.Con
 func (d *alertRulesDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var cfg alertRulesDataSourceModel
 
-	out, httpResp, err := d.pd.api.DefaultAPI.V2RulelistPost(ctx).Authorization(d.pd.token).Execute()
+	out, httpResp, err := d.pd.api.DefaultAPI.V2RulelistPost(ctx).Authorization(d.pd.token).Body(map[string]interface{}{}).Execute()
 	closeBody(httpResp)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to read alert rules", apiErrorDetail(err))

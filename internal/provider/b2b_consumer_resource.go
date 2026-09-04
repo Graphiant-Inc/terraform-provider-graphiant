@@ -230,10 +230,42 @@ func (m *b2bConsumerResourceModel) applyFromGet(ctx context.Context, out *sdk.V1
 	}
 	m.Status = types.StringPointerValue(out.Status)
 
+	// nat_translation_mode is Optional (not Computed): when it's absent from
+	// config/plan, the framework requires the resulting state to keep it null.
+	// The read endpoint, however, echoes back the NAT mode inherited from the
+	// associated match even when this consumer never configured one itself, so
+	// capture whether it was already set (from plan/prior state) before
+	// overwriting, and re-null it if the caller never set it.
+	var priorNatModeSet bool
+	if !m.Policy.IsNull() && !m.Policy.IsUnknown() {
+		var prior b2bConsumerPolicyModel
+		if d := m.Policy.As(ctx, &prior, objectAsOptions); !d.HasError() {
+			priorNatModeSet = !prior.NatTranslationMode.IsNull() && !prior.NatTranslationMode.IsUnknown()
+		}
+	}
+
 	policyObj, diags := applyB2bConsumerPolicy(ctx, out.Policy)
 	if diags.HasError() {
 		return diags
 	}
+
+	if !priorNatModeSet {
+		var policyModel b2bConsumerPolicyModel
+		diags.Append(policyObj.As(ctx, &policyModel, objectAsOptions)...)
+		if diags.HasError() {
+			return diags
+		}
+		if !policyModel.NatTranslationMode.IsNull() {
+			policyModel.NatTranslationMode = types.ObjectNull(b2bNatModeAttrTypes)
+			patched, d := types.ObjectValueFrom(ctx, b2bConsumerPolicyAttrTypes, policyModel)
+			diags.Append(d...)
+			if diags.HasError() {
+				return diags
+			}
+			policyObj = patched
+		}
+	}
+
 	m.Policy = policyObj
 	return diags
 }

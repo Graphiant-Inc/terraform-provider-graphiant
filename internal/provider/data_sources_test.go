@@ -11,13 +11,15 @@ import (
 // This file covers the provider's 14 data sources. Data sources have no create/
 // destroy lifecycle and no import, so each test is a single Config+Check step.
 // The eight that take no input are exercised as-is. Of the six that look up a
-// specific object by id: graphiant_site_devices/graphiant_troubleshooting_site
-// create their own throwaway graphiant_site to look up, since sites are
-// creatable via this provider; the other four (graphiant_device,
-// graphiant_troubleshooting_device, graphiant_prefix_set, graphiant_routing_policy)
-// look up objects this provider has no way to create — a device, or a
-// prefix set/routing policy (no write path exists for either) — so they use
-// testAccPreCheckHardcoded and never run in CI; see that helper's doc comment.
+// specific object by id, four (graphiant_device/graphiant_troubleshooting_device/
+// graphiant_prefix_set/graphiant_routing_policy) use testAccPreCheckHardcoded and
+// never run in CI (see that helper's doc comment): they look up objects this
+// provider has no way to create — a device, or a prefix set/routing policy (no
+// write path exists for either). graphiant_site_devices/graphiant_troubleshooting_site
+// create their own throwaway graphiant_site to look up instead (see
+// testAccSiteResourceConfig in site_resource_test.go), now that site creation
+// works (it needed address_line1/state/country populated — see that test's
+// comment for the history).
 
 func TestAccAlertRecordsDataSource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -123,33 +125,15 @@ func TestAccRegionsDataSource(t *testing.T) {
 	})
 }
 
-// testAccSiteForDataSource is a throwaway graphiant_site with a random name,
-// used to give graphiant_site_devices/graphiant_troubleshooting_site a real,
-// self-contained site_id instead of a hardcoded one.
-func testAccSiteForDataSourceConfig(name string) string {
-	return fmt.Sprintf(`
-resource "graphiant_site" "test" {
-  name  = %[1]q
-  notes = "created by terraform acceptance tests"
-
-  location {
-    city         = "San Jose"
-    state_code   = "CA"
-    country_code = "US"
-  }
-}
-`, name)
-}
-
 func TestAccSiteDevicesDataSource(t *testing.T) {
 	name := acctest.RandomWithPrefix("tf-acc-site-devices")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckDisabled(t) },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccSiteForDataSourceConfig(name) + `
+				Config: testAccSiteResourceConfig(name) + `
 data "graphiant_site_devices" "test" {
   site_id = graphiant_site.test.id
 }
@@ -164,11 +148,11 @@ func TestAccTroubleshootingSiteDataSource(t *testing.T) {
 	name := acctest.RandomWithPrefix("tf-acc-troubleshooting-site")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckDisabled(t) },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccSiteForDataSourceConfig(name) + `
+				Config: testAccSiteResourceConfig(name) + `
 data "graphiant_troubleshooting_site" "test" {
   site_id = graphiant_site.test.id
 }
@@ -182,7 +166,8 @@ data "graphiant_troubleshooting_site" "test" {
 // device_id/prefix set/routing policy ids below reference objects this provider
 // has no way to create (a device, or a prefix set/routing policy — no write path
 // exists for either), so these are placeholders that only resolve on a specific
-// test tenant; see testAccPreCheckHardcoded.
+// test tenant; see testAccPreCheckHardcoded. The device id is overridable via
+// GRAPHIANT_ACC_DEVICE_ID for your own tenant.
 
 func TestAccDeviceDataSource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -190,8 +175,9 @@ func TestAccDeviceDataSource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `data "graphiant_device" "test" { id = 12345 }`,
-				Check:  resource.TestCheckResourceAttrSet("data.graphiant_device.test", "hostname"),
+				Config: fmt.Sprintf(`data "graphiant_device" "test" { id = %[1]s }`,
+					testAccEnvOrDefault("GRAPHIANT_ACC_DEVICE_ID", "12345")),
+				Check: resource.TestCheckResourceAttrSet("data.graphiant_device.test", "hostname"),
 			},
 		},
 	})
@@ -203,8 +189,9 @@ func TestAccTroubleshootingDeviceDataSource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `data "graphiant_troubleshooting_device" "test" { device_id = 12345 }`,
-				Check:  resource.TestCheckResourceAttrSet("data.graphiant_troubleshooting_device.test", "status"),
+				Config: fmt.Sprintf(`data "graphiant_troubleshooting_device" "test" { device_id = %[1]s }`,
+					testAccEnvOrDefault("GRAPHIANT_ACC_DEVICE_ID", "12345")),
+				Check: resource.TestCheckResourceAttrSet("data.graphiant_troubleshooting_device.test", "status"),
 			},
 		},
 	})

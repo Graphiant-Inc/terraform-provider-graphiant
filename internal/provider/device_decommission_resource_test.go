@@ -1,13 +1,14 @@
 package provider
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 // device_serials is a placeholder that only resolves on a specific test tenant;
-// adjust for your own.
+// override via GRAPHIANT_ACC_DEVICE_DECOMMISSION_SERIAL for your own.
 func TestAccDeviceDecommissionResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheckHardcoded(t) },
@@ -26,9 +27,9 @@ func TestAccDeviceDecommissionResource(t *testing.T) {
 }
 
 func testAccDeviceDecommissionResourceConfig() string {
-	return `
+	return fmt.Sprintf(`
 resource "graphiant_device_decommission" "test" {
-  device_serials = ["TFACCTEST0001"]
+  device_serials = ["%[1]s"]
 }
-`
+`, testAccEnvOrDefault("GRAPHIANT_ACC_DEVICE_DECOMMISSION_SERIAL", ""))
 }

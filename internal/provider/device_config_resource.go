@@ -66,7 +66,9 @@ func (r *deviceConfigResource) Schema(ctx context.Context, req resource.SchemaRe
 			"its own description. It does NOT expose those other config domains: each is a large nested " +
 			"map on ManaV2CoreDeviceConfig/ManaV2EdgeDeviceConfig that hasn't been individually verified and would " +
 			"need its own dedicated resource. The underlying PUT is an async job; this resource polls " +
-			"V1DevicesDeviceIdJobsJobIdGet (bounded, ~30s) for completion. There is no \"unconfigure\" endpoint, so " +
+			"V1DevicesDeviceIdJobsJobIdGet (bounded, ~30s) for completion. Update waits 1 minute before pushing, " +
+			"since the device can still be settling from a prior job (rejecting a new PUT with \"forbidden from " +
+			"its current state\") right after that job reports complete. There is no \"unconfigure\" endpoint, so " +
 			"Delete only removes the resource from Terraform state. Import uses \"<device_id>:<device_type>\" " +
 			"since device_type can't be derived from the API alone.",
 		Attributes: map[string]schema.Attribute{
@@ -221,20 +223,38 @@ func (r *deviceConfigResource) readDevice(ctx context.Context, deviceID int64) (
 	return out.Device, true, diags
 }
 
+// setBool applies v to *dst, except it leaves an already-known *dst alone when
+// v is nil. The API has been observed (on a sibling alertservice endpoint)
+// omitting boolean fields entirely rather than sending false explicitly,
+// which is indistinguishable from "not returned" — overwriting unconditionally
+// would null out a value we just explicitly set via Create/Update and trip
+// Terraform's inconsistent-result check. But *dst is Unknown (not yet a known
+// value) whenever the attribute is Computed and wasn't set in config, and
+// Terraform requires every Computed attribute to resolve to a known value
+// after apply — Null counts as known, Unknown does not — so in that case v's
+// nil must still resolve to BoolNull() rather than being left alone.
+func setBool(dst *types.Bool, v *bool) {
+	if v != nil {
+		*dst = types.BoolPointerValue(v)
+	} else if dst.IsUnknown() {
+		*dst = types.BoolNull()
+	}
+}
+
 // applyDevice deliberately leaves m.Region untouched — see the region attribute's
 // schema description for why it can't be safely refreshed from ManaV2Device.
 func (m *deviceConfigResourceModel) applyDevice(dev *sdk.ManaV2Device) {
 	m.ID = types.StringValue(int64ID(m.DeviceID.ValueInt64()))
-	m.MaintenanceMode = types.BoolPointerValue(dev.MaintenanceMode)
+	setBool(&m.MaintenanceMode, dev.MaintenanceMode)
 	if m.DeviceType.ValueString() == "edge" {
-		m.BgpEnabled = types.BoolPointerValue(dev.BgpEnabled)
-		m.DhcpServerEnabled = types.BoolPointerValue(dev.DhcpServerEnabled)
-		m.IpfixEnabled = types.BoolPointerValue(dev.IpfixEnabled)
-		m.LldpEnabled = types.BoolPointerValue(dev.LldpEnabled)
-		m.Ospfv2Enabled = types.BoolPointerValue(dev.Ospfv2Enabled)
-		m.Ospfv3Enabled = types.BoolPointerValue(dev.Ospfv3Enabled)
-		m.StaticRoutesEnabled = types.BoolPointerValue(dev.StaticRoutesEnabled)
-		m.VrrpEnabled = types.BoolPointerValue(dev.VrrpEnabled)
+		setBool(&m.BgpEnabled, dev.BgpEnabled)
+		setBool(&m.DhcpServerEnabled, dev.DhcpServerEnabled)
+		setBool(&m.IpfixEnabled, dev.IpfixEnabled)
+		setBool(&m.LldpEnabled, dev.LldpEnabled)
+		setBool(&m.Ospfv2Enabled, dev.Ospfv2Enabled)
+		setBool(&m.Ospfv3Enabled, dev.Ospfv3Enabled)
+		setBool(&m.StaticRoutesEnabled, dev.StaticRoutesEnabled)
+		setBool(&m.VrrpEnabled, dev.VrrpEnabled)
 	}
 }
 
@@ -291,6 +311,11 @@ func (r *deviceConfigResource) Update(ctx context.Context, req resource.UpdateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// The device can still be settling from a prior config job (observed as a 500,
+	// "forbidden from its current state") right after that job's completion is
+	// reported; give it time to leave that state before pushing again.
+	time.Sleep(1 * time.Minute)
 
 	resp.Diagnostics.Append(r.put(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {

@@ -112,13 +112,23 @@ func (r *siteResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 					"address_line2": schema.StringAttribute{Optional: true},
 					"city":          schema.StringAttribute{Optional: true},
 					"state":         schema.StringAttribute{Optional: true},
-					"state_code":    schema.StringAttribute{Optional: true},
+					"state_code": schema.StringAttribute{
+						Optional:      true,
+						Computed:      true,
+						Description:   "State code. Server-derived from address_line1/state/country if not set.",
+						PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
 					"province_code": schema.StringAttribute{Optional: true},
 					"country":       schema.StringAttribute{Optional: true},
-					"country_code":  schema.StringAttribute{Optional: true},
-					"latitude":      schema.Float64Attribute{Optional: true},
-					"longitude":     schema.Float64Attribute{Optional: true},
-					"notes":         schema.StringAttribute{Optional: true},
+					"country_code": schema.StringAttribute{
+						Optional:      true,
+						Computed:      true,
+						Description:   "Country code. Server-derived from address_line1/state/country if not set.",
+						PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"latitude":  schema.Float64Attribute{Optional: true},
+					"longitude": schema.Float64Attribute{Optional: true},
+					"notes":     schema.StringAttribute{Optional: true},
 				},
 			},
 			"route_tag": schema.SingleNestedBlock{
@@ -182,9 +192,16 @@ func (m *siteResourceModel) buildSite(ctx context.Context) (*sdk.ManaV2NewSite, 
 }
 
 // applySite copies an API-returned ManaV2Site back into the resource model. It
-// deliberately leaves m.RouteTag untouched: the API doesn't echo route_tag back on
-// ManaV2Site (only a resolved PolicyTag summary), so whatever the caller already
-// had in the model (from plan or prior state) is preserved as-is.
+// deliberately leaves m.RouteTag and m.EnterpriseID untouched: ManaV2Site has no
+// route_tag field at all (only a resolved PolicyTag summary) and no enterprise_id
+// field either, so whatever the caller already had in the model (from plan or
+// prior state) is preserved as-is for both. m.Location gets the same treatment
+// when site.Location is nil — confirmed that V1SitesSiteIdPost's (Update's)
+// response omits it even though V1SitesPost (Create) and V1SitesGet (Read, via
+// findSite) both populate it; without this, Update would null out a location
+// the caller just configured, which the framework flags as an inconsistent
+// result (a whole block going from present to absent isn't something a
+// non-Computed attribute is allowed to do).
 func (m *siteResourceModel) applySite(ctx context.Context, site *sdk.ManaV2Site) diag.Diagnostics {
 	m.ID = types.StringValue(int64PtrID(site.Id))
 	m.Name = types.StringPointerValue(site.Name)
@@ -215,8 +232,6 @@ func (m *siteResourceModel) applySite(ctx context.Context, site *sdk.ManaV2Site)
 			return d
 		}
 		m.Location = obj
-	} else {
-		m.Location = types.ObjectNull(siteLocationAttrTypes)
 	}
 
 	return nil
