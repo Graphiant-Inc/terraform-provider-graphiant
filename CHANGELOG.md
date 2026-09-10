@@ -11,7 +11,108 @@ SemVer sequence starting from `0.1.0`/`1.0.0` — see
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how that plays out when
 cutting a new release.
 
-## 26.8.2 (August 31, 2026)
+## 26.9.0 (September 25, 2026)
+
+NOTES:
+
+* provider: Provider-only fix release; still built against the same
+  `graphiant-sdk-go` snapshot as `26.8.0` (no `go.mod` change) — the version
+  bump reflects the number of null-handling/response-reliability fixes
+  below, not a new SDK sync.
+* testing: Several acceptance-test configs were corrected to match real API
+  enum/status values and test-tenant object ids found while working through
+  the fixes below (e.g. `alert_integration`'s `integration_type =
+  "webhook_url"` not `"webhook"`, `b2b_customer`'s `type = "graphiant_peer"`
+  not `"non-graphiant"`, `device_bringup`'s `status = "Allowed"` not
+  `"active"`, `software_rollout`'s `action = "Install"` / `release =
+  "Recommended"`; hardcoded device ids/serials updated to ones that exist
+  in the test tenant). `graphiant_site_devices`/`graphiant_troubleshooting_site`/
+  `graphiant_extranet`'s tests were also switched from a throwaway
+  `graphiant_site` to a hardcoded site id placeholder (gated behind
+  `testAccPreCheckHardcoded`), since `graphiant_site` creation currently
+  500s against the test tenant with no validation detail in the response —
+  see `site_resource_test.go`'s comment.
+
+BUG FIXES:
+
+* resource/graphiant_alert_integration: `Create`'s response `id` has been
+  observed pointing at a pre-existing, unrelated integration instead of the
+  one just created; `Create` now re-locates the new record by `nick_name`
+  via a fresh list call instead of trusting that id. Also fixed `is_active`
+  to stop getting nulled out when the API omits the field from a response
+  (observed on the sibling `alert_notification` endpoint) instead of
+  sending it back as explicit `false`.
+* resource/graphiant_alert_notification: Fixed `enabled` with the same
+  omitted-boolean-field handling as `alert_integration`'s `is_active`
+  above. `rule_id_list` is now also populated from `rule_id` on read when
+  not already known, so it doesn't come back null after an out-of-band
+  change.
+* data-source/graphiant_alert_rules: `V2RulelistPost` now sends an empty
+  JSON body; the API was rejecting the previously-bodyless request.
+* resource/graphiant_app_list: `apps` now reads back as null (matching its
+  Optional, non-Computed schema) instead of an empty list when the API
+  returns none, fixing a Terraform inconsistent-result error on
+  create/update for a config that omits `apps` entirely.
+* resource/graphiant_assurance_global:
+  * `use_all_sites` is only ever sent as explicit `true`, never `false` —
+    the update endpoint rejects the field outright when present and false
+    (`"invalid AssuranceConfig.UseAllSites: value must equal true"`), so
+    "not using all sites" is now expressed by omitting the field, with
+    `site_list_id` carrying the real signal. Reading it back now also
+    treats an absent field as `false` rather than null, since the API only
+    ever omits it to mean false.
+  * `apps` now round-trips to null instead of an empty list when unset,
+    fixing the same class of inconsistent-result error as
+    `graphiant_app_list` above.
+  * `Delete` now recovers from the API's "must detach ... from all sites
+    prior to deletion" rejection (returned for a config still scoped to
+    `use_all_sites=true` from the API's perspective) by repointing the
+    config at an existing, non-empty site list in the tenant and retrying
+    the delete once, instead of failing outright with no path to destroy
+    the resource through Terraform.
+* resource/graphiant_b2b_consumer, resource/graphiant_b2b_producer_service:
+  The shared `applyB2bSiteInfoList` helper now returns null instead of an
+  empty list for `sites` when the API returns none.
+* resource/graphiant_content_filter: `rules` now reads back as null instead
+  of an empty list when unset, same inconsistent-result fix as above.
+* resource/graphiant_custom_app:
+  * `ip_protocol` now maps the API's `"UnknownIPProtocol"` sentinel (its
+    unset/zero enum value) back to null instead of leaking it into state,
+    fixing a mismatch against an unset config's null plan value.
+  * `port_ranges` now reads back as null instead of an empty list when
+    unset.
+* resource/graphiant_device_config: All boolean device attributes
+  (`maintenance_mode` and, for edge devices, the `*_enabled` toggles) now
+  go through a shared `setBool` helper that stops nulling out a value just
+  set via `Create`/`Update` when the API omits a boolean field from its
+  response, while still correctly resolving an unset Computed attribute to
+  null rather than leaving it unknown. `Update` also now waits 1 minute
+  before pushing new config, since the device can still be settling from a
+  prior config job — rejecting a new push with a "forbidden from its
+  current state" error — immediately after that job reports complete.
+* resource/graphiant_extranet:
+  * `type` is now Optional+Computed instead of plain Optional: the API
+    derives a value (e.g. `"device_local"`) when it's left unset, which a
+    plain Optional attribute can't accept back without tripping Terraform's
+    consistency check.
+  * `source`/`target` now collapse to null when the API returns a target
+    with no excluded devices or sites, instead of an object with two empty
+    lists, fixing another inconsistent-result case for an unconfigured
+    attribute.
+  * `excluded_devices`, `sites`, and `target_segments` now individually
+    read back as null instead of empty lists when the API returns none.
+  * `auto`/`manual` no longer get forced to null whenever the API response
+    doesn't echo them back — the prior plan/state value is preserved
+    instead, so a configured `auto` or `manual` block no longer gets
+    silently cleared on refresh.
+* resource/graphiant_site_list: `entries` now reads back as null instead of
+  an empty list when the API returns none, same fix as the list attributes
+  above.
+* data-source/graphiant_troubleshooting_device: The lookup request now
+  includes a `time_window` (the last hour), matching what the API expects;
+  the previous empty request body was returning incomplete data.
+
+## 26.8.0 (August 28, 2026)
 
 NOTES:
 

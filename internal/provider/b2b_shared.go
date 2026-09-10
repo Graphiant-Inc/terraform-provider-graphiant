@@ -64,6 +64,9 @@ func buildB2bSiteInfoList(ctx context.Context, list types.List) ([]sdk.ManaV2B2b
 }
 
 func applyB2bSiteInfoList(ctx context.Context, in []sdk.ManaV2B2bSiteInformation) (types.List, diag.Diagnostics) {
+	if len(in) == 0 {
+		return types.ListNull(b2bSiteInfoListType), nil
+	}
 	models := make([]b2bSiteInfoModel, 0, len(in))
 	var diags diag.Diagnostics
 	for _, info := range in {

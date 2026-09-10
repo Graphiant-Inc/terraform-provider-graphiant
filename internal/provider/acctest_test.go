@@ -48,6 +48,17 @@ func testAccPreCheckHardcoded(t *testing.T) {
 	}
 }
 
+// testAccEnvOrDefault returns the value of environment variable key, or def if
+// it's unset. Tests gated by testAccPreCheckHardcoded use this so a maintainer
+// can point a hardcoded id/serial at their own test tenant via an env var
+// instead of editing the placeholder in this file directly.
+func testAccEnvOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 // testAccPreCheckDisabled gates tests that are temporarily disabled pending
 // investigation (see CONTRIBUTING.md's "Acceptance tests" section). Like
 // testAccPreCheckHardcoded, they never run automatically in CI (test.yml's

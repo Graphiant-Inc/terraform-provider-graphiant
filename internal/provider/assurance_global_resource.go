@@ -2,6 +2,9 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -111,10 +114,17 @@ func (r *assuranceGlobalResource) Configure(ctx context.Context, req resource.Co
 
 func (m *assuranceGlobalResourceModel) buildConfig(ctx context.Context) (*sdk.ManaV2AssuranceConfig, diag.Diagnostics) {
 	cfg := &sdk.ManaV2AssuranceConfig{
-		Name:        m.Name.ValueStringPointer(),
-		FlexAlgo:    m.FlexAlgo.ValueStringPointer(),
-		SiteListId:  m.SiteListID.ValueInt64Pointer(),
-		UseAllSites: m.UseAllSites.ValueBoolPointer(),
+		Name:       m.Name.ValueStringPointer(),
+		FlexAlgo:   m.FlexAlgo.ValueStringPointer(),
+		SiteListId: m.SiteListID.ValueInt64Pointer(),
+	}
+	// UseAllSites is only ever sent as true, never as an explicit false: the
+	// update endpoint's validation rejects the field when present and false
+	// ("invalid AssuranceConfig.UseAllSites: value must equal true"), so
+	// "not using all sites" must be expressed by omitting the field (nil)
+	// rather than sending false, and site_list_id carries the real signal.
+	if m.UseAllSites.ValueBool() {
+		cfg.UseAllSites = m.UseAllSites.ValueBoolPointer()
 	}
 	var diags diag.Diagnostics
 	if !m.LanNames.IsNull() && !m.LanNames.IsUnknown() {
@@ -144,13 +154,27 @@ func (m *assuranceGlobalResourceModel) applyConfig(ctx context.Context, cfg *sdk
 	m.Name = types.StringPointerValue(cfg.Name)
 	m.FlexAlgo = types.StringPointerValue(cfg.FlexAlgo)
 	m.SiteListID = types.Int64PointerValue(cfg.SiteListId)
-	m.UseAllSites = types.BoolPointerValue(cfg.UseAllSites)
+	// use_all_sites is Optional but not Computed, so an explicit false in
+	// config/state must round-trip as false, not null: since buildConfig
+	// only ever sends this field as true (never false, see there), the API
+	// omitting it from a read response means false, not "unset".
+	useAllSites := cfg.UseAllSites
+	if useAllSites == nil {
+		f := false
+		useAllSites = &f
+	}
+	m.UseAllSites = types.BoolPointerValue(useAllSites)
 
 	lanNames, d := types.ListValueFrom(ctx, types.StringType, cfg.LanNames)
 	diags.Append(d...)
 	m.LanNames = lanNames
 
-	apps := make([]assuranceBucketAppModel, 0, len(cfg.Apps))
+	// A nil (not merely empty) slice here matters: apps is Optional but not
+	// Computed, so when the config never sets it, Terraform's plan value is
+	// null, and ListValueFrom must be handed a nil slice to round-trip that
+	// back to null too — an empty-but-non-nil slice instead produces an
+	// empty list, which fails Terraform's post-apply consistency check.
+	var apps []assuranceBucketAppModel
 	for _, a := range cfg.Apps {
 		apps = append(apps, assuranceBucketAppModel{
 			BucketID:      types.Int64PointerValue(intPtr32To64(a.BucketId)),
@@ -326,11 +350,111 @@ func (r *assuranceGlobalResource) Delete(ctx context.Context, req resource.Delet
 		return
 	}
 
+	// A config still scoped to use_all_sites=true (from the API's perspective — this can lag
+	// what Terraform's state says, e.g. after an update that pointed site_list_id at a site
+	// list that was, or later became, empty) can't be deleted directly: "must detach ... from
+	// all sites prior to deletion". React to that specific error rather than trusting state,
+	// by repointing at an existing site list and retrying once.
 	_, httpResp, err := r.pd.api.DefaultAPI.V1DataAssuranceAssurancesGlobalIdDelete(ctx, id).Authorization(r.pd.token).Execute()
 	closeBody(httpResp)
+	if err != nil && isAssuranceMustDetachFromAllSitesError(err) {
+		diags := r.detachFromAllSites(ctx, id)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		var httpResp2 *http.Response
+		_, httpResp2, err = r.pd.api.DefaultAPI.V1DataAssuranceAssurancesGlobalIdDelete(ctx, id).Authorization(r.pd.token).Execute()
+		closeBody(httpResp2)
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to delete assurance config", apiErrorDetail(err))
 	}
+}
+
+// isAssuranceMustDetachFromAllSitesError reports whether err is the API's "must detach ... from all
+// sites prior to deletion" rejection, as opposed to some other delete failure that
+// detachFromAllSites's site-list dance wouldn't help with.
+func isAssuranceMustDetachFromAllSitesError(err error) bool {
+	var apiErr *sdk.GenericOpenAPIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return strings.Contains(string(apiErr.Body()), "from all sites prior to deletion")
+}
+
+// detachFromAllSites repoints a use_all_sites=true config at an existing, non-empty site
+// list so it can be deleted. There's no dedicated detach call — the API only clears
+// use_all_sites once the config's site_list_id points at a site list that actually has
+// sites in it. This reuses any such site list already in the tenant rather than creating
+// a throwaway one: a scratch site + site list created here would themselves need cleanup,
+// and a failure partway through would leave orphaned objects behind in the tenant.
+func (r *assuranceGlobalResource) detachFromAllSites(ctx context.Context, id int64) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	// The update endpoint is a full replace, not a patch (it separately rejects a request
+	// missing Name: "attempting to modify an assurance without providing its name"), so the
+	// current config must be read back and modified in place rather than PUT with only
+	// SiteListId set.
+	current, found, diags2 := r.readByID(ctx, id)
+	diags.Append(diags2...)
+	if diags.HasError() {
+		return diags
+	}
+	if !found {
+		return diags
+	}
+
+	lists, httpResp, err := r.pd.api.DefaultAPI.V1GlobalSiteListsGet(ctx).Authorization(r.pd.token).Execute()
+	closeBody(httpResp)
+	if err != nil {
+		diags.AddError("Unable to detach assurance config from all sites", "listing site lists: "+apiErrorDetail(err))
+		return diags
+	}
+
+	var siteListID *int64
+	if lists != nil {
+		for _, e := range lists.Entries {
+			if e.Id == nil {
+				continue
+			}
+			details, detailsResp, err := r.pd.api.DefaultAPI.V1GlobalSiteListsIdGet(ctx, *e.Id).Authorization(r.pd.token).Execute()
+			closeBody(detailsResp)
+			if err != nil {
+				diags.AddError("Unable to detach assurance config from all sites", "reading site list: "+apiErrorDetail(err))
+				return diags
+			}
+			if details != nil && len(details.Entries) > 0 {
+				siteListID = e.Id
+				break
+			}
+		}
+	}
+	if siteListID == nil {
+		diags.AddError(
+			"Unable to delete assurance config",
+			"this config is still scoped to use_all_sites=true, and the API refuses to delete it in that state "+
+				"(\"must detach ... from all sites prior to deletion\"). No existing site list with at least one "+
+				"site was found in this tenant to repoint it at automatically. Create a graphiant_site_list with "+
+				"a real site entry, set this resource's site_list_id to it and use_all_sites to false, apply, then "+
+				"destroy again.",
+		)
+		return diags
+	}
+
+	current.SiteListId = siteListID
+	current.UseAllSites = nil
+
+	body := sdk.V1DataAssuranceAssurancesGlobalIdPutRequest{Config: current}
+	_, putResp, err := r.pd.api.DefaultAPI.V1DataAssuranceAssurancesGlobalIdPut(ctx, id).
+		Authorization(r.pd.token).
+		V1DataAssuranceAssurancesGlobalIdPutRequest(body).
+		Execute()
+	closeBody(putResp)
+	if err != nil {
+		diags.AddError("Unable to detach assurance config from all sites", apiErrorDetail(err))
+	}
+	return diags
 }
 
 func (r *assuranceGlobalResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

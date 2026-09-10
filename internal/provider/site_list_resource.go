@@ -138,6 +138,9 @@ func buildSiteListEntries(ctx context.Context, list types.List) ([]sdk.ManaV2Sit
 }
 
 func siteListEntriesToList(ctx context.Context, entries []sdk.ManaV2SiteListEntry) (types.List, diag.Diagnostics) {
+	if len(entries) == 0 {
+		return types.ListNull(siteListEntryListType), nil
+	}
 	models := make([]siteListEntryModel, 0, len(entries))
 	for _, e := range entries {
 		m := siteListEntryModel{SiteID: types.Int64PointerValue(e.Regular)}

@@ -37,9 +37,9 @@ func TestAccSoftwareRolloutResource(t *testing.T) {
 func testAccSoftwareRolloutResourceConfig(name string) string {
 	return fmt.Sprintf(`
 resource "graphiant_software_rollout" "test" {
-  action  = "upgrade"
+  action  = "Install"
   name    = %[1]q
-  release = "26.8.0"
+  release = "Recommended"
 }
 `, name)
 }

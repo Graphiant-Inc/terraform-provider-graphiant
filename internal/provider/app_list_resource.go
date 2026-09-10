@@ -113,6 +113,14 @@ func (m *appListResourceModel) applyConfig(ctx context.Context, cfg *sdk.ManaV2A
 	m.Name = types.StringPointerValue(cfg.Name)
 	m.Description = types.StringPointerValue(cfg.Description)
 
+	// apps is Optional (not Computed): when the API returns none, apply null
+	// rather than an empty list, so a config that omits apps entirely doesn't
+	// trip Terraform's inconsistent-result check on create/update.
+	if len(cfg.Apps) == 0 {
+		m.Apps = types.ListNull(types.ObjectType{AttrTypes: appListEntryAttrTypes})
+		return nil
+	}
+
 	entries := make([]appListEntryModel, 0, len(cfg.Apps))
 	for _, a := range cfg.Apps {
 		entries = append(entries, appListEntryModel{

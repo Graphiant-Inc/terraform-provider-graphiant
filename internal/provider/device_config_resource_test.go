@@ -8,7 +8,7 @@ import (
 )
 
 // device_id is a placeholder that only resolves on a specific test tenant;
-// adjust for your own.
+// override via GRAPHIANT_ACC_DEVICE_CONFIG_ID for your own.
 func TestAccDeviceConfigResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheckHardcoded(t) },
@@ -24,7 +24,7 @@ func TestAccDeviceConfigResource(t *testing.T) {
 			{
 				ResourceName:      "graphiant_device_config.test",
 				ImportState:       true,
-				ImportStateId:     "12345:edge",
+				ImportStateId:     fmt.Sprintf("%s:edge", testAccEnvOrDefault("GRAPHIANT_ACC_DEVICE_CONFIG_ID", "12345")),
 				ImportStateVerify: true,
 			},
 			{
@@ -40,10 +40,10 @@ func TestAccDeviceConfigResource(t *testing.T) {
 func testAccDeviceConfigResourceConfig(maintenanceMode bool) string {
 	return fmt.Sprintf(`
 resource "graphiant_device_config" "test" {
-  device_id   = 12345
+  device_id   = %[1]s
   device_type = "edge"
 
-  maintenance_mode = %[1]t
+  maintenance_mode = %[2]t
 }
-`, maintenanceMode)
+`, testAccEnvOrDefault("GRAPHIANT_ACC_DEVICE_CONFIG_ID", "12345"), maintenanceMode)
 }

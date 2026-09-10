@@ -200,10 +200,37 @@ func (m *b2bMatchResourceModel) applyFromGet(ctx context.Context, out *sdk.V1Ext
 	m.ServiceName = types.StringPointerValue(out.ServiceName)
 	m.Status = types.StringPointerValue(out.Status)
 
+	// The read endpoint does not echo lan_segment back on the match object, so
+	// capture the value already known from plan/prior state before it gets
+	// overwritten below, and restore it if the API response omits it.
+	var priorLanSegment types.Int64
+	if !m.Match.IsNull() && !m.Match.IsUnknown() {
+		var prior b2bMatchModel
+		if d := m.Match.As(ctx, &prior, objectAsOptions); !d.HasError() {
+			priorLanSegment = prior.LanSegment
+		}
+	}
+
 	matchObj, diags := applyB2bMatch(ctx, out.Match)
 	if diags.HasError() {
 		return diags
 	}
+
+	if out.Match != nil && out.Match.LanSegment == nil && !priorLanSegment.IsNull() && !priorLanSegment.IsUnknown() {
+		var matchModel b2bMatchModel
+		diags.Append(matchObj.As(ctx, &matchModel, objectAsOptions)...)
+		if diags.HasError() {
+			return diags
+		}
+		matchModel.LanSegment = priorLanSegment
+		patched, d := types.ObjectValueFrom(ctx, b2bMatchAttrTypes, matchModel)
+		diags.Append(d...)
+		if diags.HasError() {
+			return diags
+		}
+		matchObj = patched
+	}
+
 	m.Match = matchObj
 	return diags
 }

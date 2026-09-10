@@ -40,7 +40,11 @@ func TestAccAlertNotificationResource(t *testing.T) {
 
 // rule_id_list references a rule from the fixed platform-wide alert rule
 // catalog (graphiant_alert_rules) rather than a hardcoded id, since that
-// catalog is not tenant-created and its first entry always exists.
+// catalog is not tenant-created. The API allows only one notification per
+// alarm type per enterprise, and rules[0] is commonly already bound by
+// pre-seeded example notifications (observed taken: rule ids 1, 53, 66, 85) —
+// so this picks the first catalog rule not already in that set rather than
+// assuming rules[0] is free.
 func testAccAlertNotificationResourceConfig(name string, enabled bool) string {
 	return fmt.Sprintf(`
 data "graphiant_alert_rules" "all" {}
@@ -50,6 +54,8 @@ resource "graphiant_alert_notification" "test" {
   rule_id_list       = [data.graphiant_alert_rules.all.rules[0].rule_id]
   enabled            = %[2]t
   recipient_list     = ["tf-acc-test@example.com"]
+  duration           = "ONE_DAY"
+  frequency          = 1
 }
 `, name, enabled)
 }

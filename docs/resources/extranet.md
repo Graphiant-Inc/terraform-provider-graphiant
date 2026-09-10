@@ -47,7 +47,7 @@ resource "graphiant_extranet" "shared_services" {
 - `shared_segment` (Number)
 - `source` (Attributes) (see [below for nested schema](#nestedatt--source))
 - `target_segments` (List of Number)
-- `type` (String) No enum documented in the SDK; passed through verbatim.
+- `type` (String) No enum documented in the SDK; passed through verbatim. The API derives a value (e.g. "device_local") when left unset, so this is Computed to accept that.
 
 ### Read-Only
 

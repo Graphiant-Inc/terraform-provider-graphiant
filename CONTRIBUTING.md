@@ -340,7 +340,17 @@ instead of `testAccPreCheck`, so the test never runs automatically in CI
 (`test.yml`'s `acceptance` job never sets `GRAPHIANT_ACC_HARDCODED_IDS`) and
 only runs locally once a maintainer has edited the placeholder for their own
 tenant and opted in via that env var. Document the placeholder in a comment
-either way.
+either way. Where the placeholder is a device id/serial or an enterprise id,
+prefer reading it inline via `testAccEnvOrDefault("GRAPHIANT_ACC_..._ID",
+"12345")` (see `device_bringup_resource_test.go`/`device_config_resource_test.go`/
+`device_decommission_resource_test.go`, the two device data source tests in
+`data_sources_test.go`, and `site_resource_test.go`'s `enterprise_id`) over a
+bare literal, so a maintainer can point the test at their own tenant via an
+env var instead of editing the file. Prefer a throwaway resource over a
+hardcoded id whenever possible instead — see `graphiant_site_devices`/
+`graphiant_troubleshooting_site` (`data_sources_test.go`) and
+`graphiant_extranet` (`extranet_resource_test.go`), which all create their own
+throwaway `graphiant_site`.
 
 **Temporarily disabling a test.** If a test needs to stop running in CI for a
 period (e.g. investigating a live-tenant failure) without deleting it, use
