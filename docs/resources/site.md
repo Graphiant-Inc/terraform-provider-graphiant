@@ -60,13 +60,13 @@ Optional:
 - `address_line2` (String)
 - `city` (String)
 - `country` (String)
-- `country_code` (String)
+- `country_code` (String) Country code. Server-derived from address_line1/state/country if not set.
 - `latitude` (Number)
 - `longitude` (Number)
 - `notes` (String)
 - `province_code` (String)
 - `state` (String)
-- `state_code` (String)
+- `state_code` (String) State code. Server-derived from address_line1/state/country if not set.
 
 
 <a id="nestedblock--route_tag"></a>
