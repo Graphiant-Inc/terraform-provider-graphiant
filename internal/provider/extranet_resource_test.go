@@ -29,7 +29,7 @@ func TestAccExtranetResource(t *testing.T) {
 				ResourceName:      "graphiant_extranet.test",
 				ImportState:       true,
 				ImportStateVerify: true,
-				// The read model doesn't echo "auto" back for this policy type 
+				// The read model doesn't echo "auto" back for this policy type
 				ImportStateVerifyIgnore: []string{"auto"},
 			},
 		},
