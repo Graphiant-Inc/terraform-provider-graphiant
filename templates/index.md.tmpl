@@ -13,6 +13,18 @@ See the [GitHub repository](https://github.com/Graphiant-Inc/terraform-provider-
 for the full resource/data source coverage list, and [Graphiant Docs](https://docs.graphiant.com)
 for product documentation on the NaaS platform this provider manages.
 
+## Recommended: Automation Workflows
+
+For network configuration, start with `graphiant_playbook_config` and
+`graphiant_playbook_job`. Each catalog bundle (System, Network, Services,
+Gateway Services, Policies, Routing, System Objects, Data Exchange, Data
+Exchange Local) runs the [graphiant-playbooks](https://github.com/Graphiant-Inc/graphiant-playbooks)
+modules as a managed service, and those modules already handle the underlying
+device, policy and routing APIs. You supply YAML. Graphiant validates it, runs a
+mandatory dry-run and deploys only after `approve = true`, with every run in
+one audit log. Use the other resources only for objects no bundle covers yet.
+See [Graphiant Automation Workflows](https://docs.graphiant.com/docs/graphiant-automation-workflows).
+
 ## Authentication
 
 Configure exactly one of:

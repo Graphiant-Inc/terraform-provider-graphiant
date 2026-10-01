@@ -26,7 +26,7 @@ A clear and concise description of what you expected to happen.
 What happened instead — paste the relevant error/diff output.
 
 **Environment (please complete the following information):**
- - Provider version: [e.g. 26.8.2, from the `required_providers` block or `terraform version`]
+ - Provider version: [e.g. 26.9.0, from the `required_providers` block or `terraform version`]
  - Terraform version: [output of `terraform version`]
  - OS/Arch: [e.g. darwin/arm64, linux/amd64]
 

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -14,6 +15,11 @@ import (
 // exchange) resources: producer service, customer, match, consumer. All four accept
 // a nat_translation_mode block and most accept ManaV2B2bSiteInformation-shaped site
 // lists, so those are defined once here rather than duplicated per resource.
+
+// producerServiceNameRegexp is the API's rule (as of graphiant-sdk-go v26.9.0) for
+// producer service names, shared by graphiant_b2b_producer_service and
+// graphiant_public_vif's service_name.
+var producerServiceNameRegexp = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
 type b2bSiteInfoModel struct {
 	Sites     types.List `tfsdk:"sites"`

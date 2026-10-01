@@ -8,7 +8,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-// This file covers the provider's 14 data sources. Data sources have no create/
+// This file covers the provider's original 14 data sources (the graphiant_playbook_*
+// ones are in playbook_data_sources_test.go). Data sources have no create/
 // destroy lifecycle and no import, so each test is a single Config+Check step.
 // The eight that take no input are exercised as-is. Of the six that look up a
 // specific object by id, four (graphiant_device/graphiant_troubleshooting_device/

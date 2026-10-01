@@ -16,7 +16,7 @@ A software upgrade rollout campaign for a set of devices. Recurring schedule con
 resource "graphiant_software_rollout" "canary" {
   action  = "upgrade"
   name    = "canary-rollout"
-  release = "26.8.0"
+  release = "26.9.0"
 
   device_ids = [12345, 12346]
 

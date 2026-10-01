@@ -55,6 +55,7 @@ type enterpriseResourceModel struct {
 	MarketplaceID        types.String `tfsdk:"marketplace_id"`
 	CreditLimit          types.Int64  `tfsdk:"credit_limit"`
 	ImpersonationEnabled types.Bool   `tfsdk:"impersonation_enabled"`
+	BackboneApisEnabled  types.Bool   `tfsdk:"backbone_apis_enabled"`
 	PortalBanner         types.String `tfsdk:"portal_banner"`
 	ProxyTenantID        types.Int64  `tfsdk:"proxy_tenant_id"`
 }
@@ -120,17 +121,22 @@ func (r *enterpriseResource) Schema(ctx context.Context, req resource.SchemaRequ
 			"impersonation_enabled": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "Not settable at creation; only updatable afterward.",
+				Description: "The create endpoint has no field for this; when set, it is applied with an update right after creation.",
+			},
+			"backbone_apis_enabled": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether backbone APIs are enabled for the enterprise. The create endpoint has no field for this; when set, it is applied with an update right after creation.",
 			},
 			"portal_banner": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "Not settable at creation; only updatable afterward.",
+				Description: "The create endpoint has no field for this; when set, it is applied with an update right after creation.",
 			},
 			"proxy_tenant_id": schema.Int64Attribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "Not settable at creation; only updatable afterward.",
+				Description: "The create endpoint has no field for this; when set, it is applied with an update right after creation.",
 			},
 			"enterprise_contract": schema.SingleNestedAttribute{
 				Required:    true,
@@ -214,6 +220,9 @@ func (m *enterpriseResourceModel) applyEnterprise(ctx context.Context, e *sdk.Ia
 		m.CreditLimit = types.Int64Null()
 	}
 	m.ImpersonationEnabled = types.BoolPointerValue(e.ImpersonationEnabled)
+	// backboneApisEnabled is omitempty on the wire, so a missing field means false.
+	// Always reflect the server so out-of-band changes show up as drift.
+	m.BackboneApisEnabled = types.BoolValue(e.GetBackboneApisEnabled())
 	m.PortalBanner = types.StringPointerValue(e.PortalBanner)
 	m.ProxyTenantID = types.Int64PointerValue(e.ProxyTenantId)
 	return nil
@@ -321,12 +330,42 @@ func (r *enterpriseResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
+	// The create endpoint has no fields for the update-only attributes, so when any
+	// is configured, apply them with an immediate PATCH, as Update would.
+	if plan.hasUpdateOnlyFields() && created.EnterpriseId != nil {
+		resp.Diagnostics.Append(r.patch(ctx, *created.EnterpriseId, &plan)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		e, found, diags := r.findByID(ctx, *created.EnterpriseId)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !found {
+			resp.Diagnostics.AddError("Unable to update created enterprise", "enterprise no longer exists")
+			return
+		}
+		created = e
+	}
+
 	resp.Diagnostics.Append(plan.applyEnterprise(ctx, created)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+}
+
+func (m *enterpriseResourceModel) hasUpdateOnlyFields() bool {
+	configured := func(v interface {
+		IsNull() bool
+		IsUnknown() bool
+	}) bool {
+		return !v.IsNull() && !v.IsUnknown()
+	}
+	return configured(m.ImpersonationEnabled) || configured(m.BackboneApisEnabled) ||
+		configured(m.PortalBanner) || configured(m.ProxyTenantID)
 }
 
 func (r *enterpriseResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -356,6 +395,46 @@ func (r *enterpriseResource) Read(ctx context.Context, req resource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// patch sends the full configured enterprise through V1EnterprisesPatch, the only
+// endpoint that accepts the update-only fields (impersonation_enabled,
+// backbone_apis_enabled, portal_banner, proxy_tenant_id).
+func (r *enterpriseResource) patch(ctx context.Context, id int64, m *enterpriseResourceModel) diag.Diagnostics {
+	contract, diags := buildEnterpriseContract(ctx, m.EnterpriseContract)
+	if diags.HasError() {
+		return diags
+	}
+
+	body := sdk.V1EnterprisesPatchRequest{
+		EnterpriseId:         id,
+		AdminEmail:           m.AdminEmail.ValueStringPointer(),
+		CloudProvider:        m.CloudProvider.ValueStringPointer(),
+		CompanyName:          m.CompanyName.ValueStringPointer(),
+		Description:          m.Description.ValueStringPointer(),
+		EnterpriseContract:   &contract,
+		ImpersonationEnabled: knownBoolPointer(m.ImpersonationEnabled),
+		BackboneApisEnabled:  knownBoolPointer(m.BackboneApisEnabled),
+		Logo:                 m.Logo.ValueStringPointer(),
+		MarketplaceId:        m.MarketplaceID.ValueStringPointer(),
+		PortalBanner:         knownStringPointer(m.PortalBanner),
+		ProxyTenantId:        knownInt64Pointer(m.ProxyTenantID),
+		SmallLogo:            m.SmallLogo.ValueStringPointer(),
+	}
+	if v := m.CreditLimit.ValueInt64Pointer(); v != nil {
+		cl := int32(*v)
+		body.CreditLimit = &cl
+	}
+
+	httpResp, err := r.pd.api.DefaultAPI.V1EnterprisesPatch(ctx).
+		Authorization(r.pd.token).
+		V1EnterprisesPatchRequest(body).
+		Execute()
+	closeBody(httpResp)
+	if err != nil {
+		diags.AddError("Unable to update enterprise", apiErrorDetail(err))
+	}
+	return diags
+}
+
 func (r *enterpriseResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan enterpriseResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -369,38 +448,8 @@ func (r *enterpriseResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	contract, diags := buildEnterpriseContract(ctx, plan.EnterpriseContract)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(r.patch(ctx, id, &plan)...)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	body := sdk.V1EnterprisesPatchRequest{
-		EnterpriseId:         id,
-		AdminEmail:           plan.AdminEmail.ValueStringPointer(),
-		CloudProvider:        plan.CloudProvider.ValueStringPointer(),
-		CompanyName:          plan.CompanyName.ValueStringPointer(),
-		Description:          plan.Description.ValueStringPointer(),
-		EnterpriseContract:   &contract,
-		ImpersonationEnabled: plan.ImpersonationEnabled.ValueBoolPointer(),
-		Logo:                 plan.Logo.ValueStringPointer(),
-		MarketplaceId:        plan.MarketplaceID.ValueStringPointer(),
-		PortalBanner:         plan.PortalBanner.ValueStringPointer(),
-		ProxyTenantId:        plan.ProxyTenantID.ValueInt64Pointer(),
-		SmallLogo:            plan.SmallLogo.ValueStringPointer(),
-	}
-	if v := plan.CreditLimit.ValueInt64Pointer(); v != nil {
-		cl := int32(*v)
-		body.CreditLimit = &cl
-	}
-
-	httpResp, err := r.pd.api.DefaultAPI.V1EnterprisesPatch(ctx).
-		Authorization(r.pd.token).
-		V1EnterprisesPatchRequest(body).
-		Execute()
-	closeBody(httpResp)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to update enterprise", apiErrorDetail(err))
 		return
 	}
 

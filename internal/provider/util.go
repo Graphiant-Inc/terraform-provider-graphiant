@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
@@ -76,4 +77,30 @@ func configurePD(raw interface{}, diags *diag.Diagnostics) *providerData {
 		return nil
 	}
 	return pd
+}
+
+// knownBoolPointer, knownStringPointer and knownInt64Pointer return nil for null
+// or unknown values. The framework's Value*Pointer methods only return nil for
+// null: an unknown value (an unset Optional+Computed attribute during apply)
+// yields a pointer to the zero value, which a request body would send as an
+// explicit false/""/0 instead of leaving the field out.
+func knownBoolPointer(v types.Bool) *bool {
+	if v.IsUnknown() {
+		return nil
+	}
+	return v.ValueBoolPointer()
+}
+
+func knownStringPointer(v types.String) *string {
+	if v.IsUnknown() {
+		return nil
+	}
+	return v.ValueStringPointer()
+}
+
+func knownInt64Pointer(v types.Int64) *int64 {
+	if v.IsUnknown() {
+		return nil
+	}
+	return v.ValueInt64Pointer()
 }

@@ -3,7 +3,7 @@ module github.com/Graphiant-Inc/terraform-provider-graphiant
 go 1.25.8
 
 require (
-	github.com/Graphiant-Inc/graphiant-sdk-go v0.0.0-20260827013046-eb55842d504e
+	github.com/Graphiant-Inc/graphiant-sdk-go v0.0.0-20260929021035-71c7b7608a4f
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/hashicorp/terraform-plugin-go v0.31.0
