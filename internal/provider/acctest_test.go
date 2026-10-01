@@ -72,3 +72,13 @@ func testAccPreCheckDisabled(t *testing.T) {
 			"To run it locally, set GRAPHIANT_ACC_RUN_DISABLED=1.")
 	}
 }
+
+// skipUnitTestInGitHubActions skips a unit test when running under GitHub Actions
+// (which sets GITHUB_ACTIONS=true), unless GRAPHIANT_RUN_DISABLED_UNIT_TESTS is set.
+// Plain `go test ./...` runs it as usual everywhere else.
+func skipUnitTestInGitHubActions(t *testing.T) {
+	t.Helper()
+	if os.Getenv("GITHUB_ACTIONS") == "true" && os.Getenv("GRAPHIANT_RUN_DISABLED_UNIT_TESTS") == "" {
+		t.Skip("This unit test is disabled in GitHub Actions. To run it there, set GRAPHIANT_RUN_DISABLED_UNIT_TESTS=1.")
+	}
+}

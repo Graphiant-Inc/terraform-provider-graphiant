@@ -6,19 +6,26 @@ following the entry conventions from HashiCorp's
 entries are grouped as BREAKING CHANGES / NOTES / FEATURES / IMPROVEMENTS /
 BUG FIXES, each prefixed with the affected subsystem. Versioning tracks the
 Graphiant platform/SDK release the provider was built and tested against
-(e.g. `26.8.2` targets `graphiant-sdk-go` `v26.8.0`), not an independent
+(e.g. `26.9.0` targets `graphiant-sdk-go` `v26.9.0`), not an independent
 SemVer sequence starting from `0.1.0`/`1.0.0` — see
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how that plays out when
 cutting a new release.
 
-## 26.9.0 (September 25, 2026)
+## 26.9.0 (October 1, 2026)
 
 NOTES:
 
-* provider: Provider-only fix release; still built against the same
-  `graphiant-sdk-go` snapshot as `26.8.0` (no `go.mod` change) — the version
-  bump reflects the number of null-handling/response-reliability fixes
-  below, not a new SDK sync.
+* provider: Built against `graphiant-sdk-go` `v26.9.0` (`71c7b76`), which
+  adds the SDK automation (Automation Workflows) playbook API and a few
+  additive fields on existing models (see IMPROVEMENTS).
+* provider: **Recommended:** use the new `graphiant_playbook_config` /
+  `graphiant_playbook_job` resources for network configuration. Each catalog
+  bundle (System, Network, Services, Gateway Services, Policies, Routing,
+  System Objects, Data Exchange, Data Exchange Local) runs the
+  graphiant-playbooks modules, which already handle the underlying device,
+  policy and routing APIs for you, with validation, a mandatory dry-run, a
+  manual approval gate and a single audit trail. The lower-level resources
+  in this provider remain for objects no bundle covers yet.
 * testing: Several acceptance-test configs were corrected to match real API
   enum/status values and test-tenant object ids found while working through
   the fixes below (e.g. `alert_integration`'s `integration_type =
@@ -32,6 +39,53 @@ NOTES:
   `testAccPreCheckHardcoded`), since `graphiant_site` creation currently
   500s against the test tenant with no validation detail in the response —
   see `site_resource_test.go`'s comment.
+* testing: The new `graphiant_playbook_*` acceptance tests and unit tests
+  are skipped by default in GitHub Actions (`testAccPreCheckDisabled` and
+  `skipUnitTestInGitHubActions`) until they've been verified against a
+  live tenant. Set `GRAPHIANT_ACC_RUN_DISABLED=1` /
+  `GRAPHIANT_RUN_DISABLED_UNIT_TESTS=1` to run them.
+* resource/graphiant_assurance_classified_application: Delete still fails
+  against the API, because `graphiant-sdk-go` `v26.9.0` serializes
+  `classificationEntryIdList` as a plain query value instead of the array
+  form the API expects. The fix is an API spec change (`style:
+  deepObject`) and will ship with the next SDK release; the resource's
+  acceptance test stays disabled until then.
+
+FEATURES:
+
+* **New Resource:** `graphiant_playbook_config` — an Automation Workflows
+  playbook config (catalog bundle plus module YAML files). Create/update
+  validate the files server-side, failing with the validation errors, and
+  stage the config.
+* **New Resource:** `graphiant_playbook_job` — runs a staged config. Create
+  starts the mandatory dry-run and waits for it. The deploy happens only when
+  `approve = true`, so the Manual Approval gate is an explicit change in a
+  reviewed plan. Destroy aborts a job that is still in progress or awaiting
+  approval.
+* **New Data Source:** `graphiant_playbook_bundles`
+* **New Data Source:** `graphiant_playbook_module_slots`
+* **New Data Source:** `graphiant_playbook_templates`
+* **New Data Source:** `graphiant_playbook_configs`
+* **New Data Source:** `graphiant_playbook_jobs`
+* **New Data Source:** `graphiant_playbook_job`
+* **New Data Source:** `graphiant_playbook_job_logs`
+
+IMPROVEMENTS:
+
+* resource/graphiant_enterprise: Added `backbone_apis_enabled` (new in
+  `graphiant-sdk-go` `v26.9.0`). It always reflects the server's value, so
+  out-of-band changes show up as drift.
+* resource/graphiant_enterprise: `impersonation_enabled`,
+  `backbone_apis_enabled`, `portal_banner` and `proxy_tenant_id` can now be
+  set at creation. The create endpoint has no fields for them, so Create
+  applies them with an immediate update. Previously, setting one at creation
+  failed the apply with an inconsistent-result error. Updates also no longer
+  send an explicit `false`/`""`/`0` for these fields when they are left
+  unset.
+* resource/graphiant_b2b_producer_service, resource/graphiant_public_vif:
+  `service_name` is now validated at plan time against the API's documented
+  rule of letters, digits and hyphens only (new in `graphiant-sdk-go`
+  `v26.9.0`), instead of failing at apply.
 
 BUG FIXES:
 
@@ -112,7 +166,7 @@ BUG FIXES:
   includes a `time_window` (the last hour), matching what the API expects;
   the previous empty request body was returning incomplete data.
 
-## 26.8.0 (August 28, 2026)
+## 26.8.2 (August 28, 2026)
 
 NOTES:
 

@@ -15,6 +15,23 @@ client and models.
 
 Refer to [Graphiant Docs](https://docs.graphiant.com) to get started with Graphiant NaaS offerings.
 
+> [!TIP]
+> **Start with Automation Workflows.** For network configuration, use
+> [`graphiant_playbook_config`](docs/resources/playbook_config.md) and
+> [`graphiant_playbook_job`](docs/resources/playbook_job.md). Each catalog
+> bundle (System, Network, Services, Gateway Services, Policies, Routing,
+> System Objects, Data Exchange, Data Exchange Local) runs the
+> [graphiant-playbooks](https://github.com/Graphiant-Inc/graphiant-playbooks)
+> modules as a managed service, and those modules already handle the
+> underlying device, policy and routing APIs. You describe the change in YAML.
+> Graphiant validates it, runs a mandatory dry-run and deploys only after you
+> approve, with every run recorded in one audit log. That covers far more of
+> the platform than the individual resources below, including the BGP,
+> interface, NAT/security/traffic policy, site-to-site VPN and other device
+> config domains that `graphiant_device_config` doesn't expose. Use the
+> lower-level resources only for objects no bundle covers yet. See
+> [How-to: run an automation workflow](#how-to-run-an-automation-workflow).
+
 ## Graphiant API Authentication
 
 This provider authenticates to the Graphiant API using an **access token** or
@@ -101,6 +118,11 @@ See [SECURITY.md](SECURITY.md) for credential-handling guidance.
 
 ### Key features
 
+- **Automation Workflows first** — `graphiant_playbook_config` and
+  `graphiant_playbook_job` give you the graphiant-playbooks modules as a managed
+  service, covering most configuration domains through one validated,
+  dry-run-then-approve workflow instead of one resource per API. This is the
+  recommended way to manage network configuration with this provider.
 - **No codegen** — every resource/data source is hand-written directly
   against `graphiant-sdk-go` request/response structs, verified field by
   field rather than generated from a spec.
@@ -169,6 +191,15 @@ create/read/update/delete endpoints:
   config domains; see its schema description for why.
 - **LAN segments** (`graphiant_lan_segment`) — global LAN segments;
   create+delete only, no update endpoint exists.
+- **Automation Workflows** (`graphiant_playbook_config`,
+  `graphiant_playbook_job`) — Graphiant's managed playbook service: stage a
+  catalog bundle plus module YAML, run its mandatory dry-run, and deploy only
+  after an explicit `approve = true` (the Manual Approval gate). Read-only
+  companions: `graphiant_playbook_bundles`, `graphiant_playbook_module_slots`,
+  `graphiant_playbook_templates`, `graphiant_playbook_configs`,
+  `graphiant_playbook_jobs`, `graphiant_playbook_job`,
+  `graphiant_playbook_job_logs`. See
+  [How-to: run an automation workflow](#how-to-run-an-automation-workflow).
 - **Devices (read-only)** — `graphiant_device` data source for a single
   onboarded edge device by ID. This provider does not manage device
   network configuration.
@@ -280,6 +311,8 @@ resource "graphiant_user" "jane" {
 | Resource | `graphiant_route_tag` | Create/delete an enterprise route tag; no update endpoint exists |
 | Resource | `graphiant_device_config` | Push device config (maintenance_mode + edge `*_enabled` toggles) via the generic device-config endpoint |
 | Resource | `graphiant_lan_segment` | Create/delete a global LAN segment; no update endpoint exists |
+| Resource | `graphiant_playbook_config` | Create/update/delete an Automation Workflows playbook config (validated + staged) |
+| Resource | `graphiant_playbook_job` | Run a playbook config: dry-run on create, deploy only once `approve = true` |
 | Data source | `graphiant_device` | Look up one onboarded device by `id` (read-only) |
 | Data source | `graphiant_edges` | Current edge device summary list, optionally filtered |
 | Data source | `graphiant_site_devices` | Per-site device list with maintenance/VRRP state |
@@ -294,6 +327,13 @@ resource "graphiant_user" "jane" {
 | Data source | `graphiant_domain_categories` | Content-filter domain category catalog |
 | Data source | `graphiant_regions` | Graphiant region catalog |
 | Data source | `graphiant_ipsec_profiles` | Global IPsec profiles and their reference counts |
+| Data source | `graphiant_playbook_bundles` | Automation Workflows catalog bundles |
+| Data source | `graphiant_playbook_module_slots` | Module slots (module keys) of a catalog bundle |
+| Data source | `graphiant_playbook_templates` | Starter playbook and sample module YAML for a bundle |
+| Data source | `graphiant_playbook_configs` | Playbook configs (Pending Executions) with latest job status |
+| Data source | `graphiant_playbook_jobs` | Playbook job history |
+| Data source | `graphiant_playbook_job` | One playbook job, by `job_id` or latest for a `config_id` |
+| Data source | `graphiant_playbook_job_logs` | Masked ansible logs for a job, optionally by phase |
 
 ## Examples
 
@@ -329,6 +369,8 @@ examples/
 ├── resources/graphiant_route_tag/{resource.tf,import.sh}
 ├── resources/graphiant_device_config/{resource.tf,import.sh}
 ├── resources/graphiant_lan_segment/{resource.tf,import.sh}
+├── resources/graphiant_playbook_config/{resource.tf,import.sh}
+├── resources/graphiant_playbook_job/{resource.tf,import.sh}
 ├── data-sources/graphiant_device/data-source.tf
 ├── data-sources/graphiant_edges/data-source.tf
 ├── data-sources/graphiant_site_devices/data-source.tf
@@ -342,7 +384,14 @@ examples/
 ├── data-sources/graphiant_prefix_set/data-source.tf
 ├── data-sources/graphiant_domain_categories/data-source.tf
 ├── data-sources/graphiant_regions/data-source.tf
-└── data-sources/graphiant_ipsec_profiles/data-source.tf
+├── data-sources/graphiant_ipsec_profiles/data-source.tf
+├── data-sources/graphiant_playbook_bundles/data-source.tf
+├── data-sources/graphiant_playbook_module_slots/data-source.tf
+├── data-sources/graphiant_playbook_templates/data-source.tf
+├── data-sources/graphiant_playbook_configs/data-source.tf
+├── data-sources/graphiant_playbook_jobs/data-source.tf
+├── data-sources/graphiant_playbook_job/data-source.tf
+└── data-sources/graphiant_playbook_job_logs/data-source.tf
 ```
 
 These are the same snippets `tfplugindocs` embeds in generated docs and on
@@ -571,7 +620,70 @@ resource "graphiant_device_config" "edge1" {
 
 It does not cover BGP, interfaces, NAT/security/traffic policy, site-to-site
 VPN, LAG, DHCP relay, NTP, OSPFv2, static routes, VRRP, MACsec, or prefix/port
-lists — see the resource's schema description for the full list and why.
+lists — see the resource's schema description for the full list and why. For
+those, use the matching Automation Workflows bundle through
+`graphiant_playbook_config`/`graphiant_playbook_job` instead (see
+[How-to: run an automation workflow](#how-to-run-an-automation-workflow)).
+
+### How-to: run an automation workflow
+
+This is the recommended way to manage network configuration with this
+provider: the bundle's playbook modules handle the underlying APIs, so you
+don't have to model each one as a Terraform resource.
+
+`graphiant_playbook_config` and `graphiant_playbook_job` drive the same
+Automation Workflows pipeline as the Portal: Edit & Validate → Save & Stage →
+Dry Run → Manual Approval → Live Deployment. Every run is recorded in the
+Portal's job history and audit log, whoever started it.
+
+1. Stage the config. Create/update validate the YAML server-side and fail the
+   apply with the validation errors if it doesn't pass:
+
+   ```hcl
+   resource "graphiant_playbook_config" "ntp" {
+     name       = "branch-ntp"
+     bundle_key = "system_bundle"
+
+     files = [{
+       module_key = "ntp"
+       filename   = "ntp.yaml"
+       content    = file("${path.module}/configs/ntp.yaml")
+     }]
+   }
+   ```
+
+2. Run the dry-run. Creating the job only runs `ansible --check`; nothing
+   changes on the network:
+
+   ```hcl
+   resource "graphiant_playbook_job" "ntp" {
+     config_id = graphiant_playbook_config.ntp.id
+     triggers  = { files = sha256(jsonencode(graphiant_playbook_config.ntp.files)) }
+   }
+
+   data "graphiant_playbook_job_logs" "ntp" {
+     job_id = graphiant_playbook_job.ntp.id
+     phase  = "dry_run"
+   }
+   ```
+
+3. Review the dry-run (`status`, the logs above), then approve it in a
+   follow-up change, so the deploy shows up as its own reviewed plan:
+
+   ```hcl
+   resource "graphiant_playbook_job" "ntp" {
+     config_id = graphiant_playbook_config.ntp.id
+     triggers  = { files = sha256(jsonencode(graphiant_playbook_config.ntp.files)) }
+     approve   = true
+   }
+   ```
+
+Changing the files changes `triggers`, which replaces the job with a fresh,
+unapproved dry-run. Set `approve` back to `false` when you change the files,
+or the new job is approved straight after its dry-run passes. Use the
+`graphiant_playbook_bundles`, `graphiant_playbook_module_slots` and
+`graphiant_playbook_templates` data sources to find bundle/module keys and
+starter YAML.
 
 ## Project Structure
 

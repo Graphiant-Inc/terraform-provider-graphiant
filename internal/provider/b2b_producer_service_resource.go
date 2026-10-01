@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -73,6 +75,9 @@ func (r *b2bProducerServiceResource) Schema(ctx context.Context, req resource.Sc
 			"service_name": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(producerServiceNameRegexp, "must contain only letters, digits and hyphens"),
+				},
 			},
 			"service_type": schema.StringAttribute{
 				Required:      true,

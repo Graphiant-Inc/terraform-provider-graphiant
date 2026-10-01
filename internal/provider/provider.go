@@ -43,7 +43,10 @@ func (p *GraphiantProvider) Schema(ctx context.Context, req provider.SchemaReque
 		Description: "The Graphiant provider is the official Terraform provider for provisioning and managing " +
 			"Graphiant Network-as-a-Service (NaaS) infrastructure as code: sites, IAM users and groups, " +
 			"gateways and data exchange (public VIF, local extranet, and B2B partner peering), software " +
-			"rollouts, alerting, and more. Authenticate with a static access token or a username/password " +
+			"rollouts, alerting, and more. For network configuration, prefer the Automation Workflows " +
+			"resources (graphiant_playbook_config and graphiant_playbook_job): their catalog bundles run the " +
+			"graphiant-playbooks modules, which handle the underlying APIs, behind validation, a dry-run and " +
+			"an approval gate. Authenticate with a static access token or a username/password " +
 			"pair, either in the provider block or via GRAPHIANT_ACCESS_TOKEN, or GRAPHIANT_USERNAME and " +
 			"GRAPHIANT_PASSWORD, environment variables.",
 		Attributes: map[string]schema.Attribute{
@@ -147,6 +150,8 @@ func (p *GraphiantProvider) Resources(ctx context.Context) []func() resource.Res
 		NewRouteTagResource,
 		NewDeviceConfigResource,
 		NewLanSegmentResource,
+		NewPlaybookConfigResource,
+		NewPlaybookJobResource,
 	}
 }
 
@@ -166,6 +171,13 @@ func (p *GraphiantProvider) DataSources(ctx context.Context) []func() datasource
 		NewDomainCategoriesDataSource,
 		NewRegionsDataSource,
 		NewIpsecProfilesDataSource,
+		NewPlaybookBundlesDataSource,
+		NewPlaybookModuleSlotsDataSource,
+		NewPlaybookTemplatesDataSource,
+		NewPlaybookConfigsDataSource,
+		NewPlaybookJobsDataSource,
+		NewPlaybookJobDataSource,
+		NewPlaybookJobLogsDataSource,
 	}
 }
 

@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -119,6 +121,9 @@ func (r *publicVifResource) Schema(ctx context.Context, req resource.SchemaReque
 			},
 			"service_name": schema.StringAttribute{
 				Required: true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(producerServiceNameRegexp, "must contain only letters, digits and hyphens"),
+				},
 			},
 			"lan_segment_id": schema.Int64Attribute{
 				Required:    true,

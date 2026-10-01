@@ -54,11 +54,11 @@ Thank you for your interest in contributing!
   `providerData`-extraction helpers shared across every resource/data source
 - `internal/provider/errors.go` — `apiErrorDetail`, which unwraps
   `graphiant_sdk.GenericOpenAPIError` for a diagnostic-friendly message
-- `internal/provider/*_resource.go` — one file per managed resource (25 as
+- `internal/provider/*_resource.go` — one file per managed resource (27 as
   of this writing — see [README.md](README.md#resources--data-sources) for
   the full list), each self-contained: schema, model struct,
   `Create`/`Read`/`Update`/`Delete`, `ImportState`
-- `internal/provider/*_data_source.go` — one file per data source (14 as of
+- `internal/provider/*_data_source.go` — one file per data source (21 as of
   this writing — same README list)
 - `internal/provider/*_test.go` — schema-validation unit tests and
   `TestAcc*` acceptance tests (see [Acceptance tests](#acceptance-tests)
@@ -140,6 +140,24 @@ long-lived state.
   this resource. The PUT is an async job, polled via
   `V1DevicesDeviceIdJobsJobIdGet` until `CompletedAt` is set (`JobState`'s
   valid values are undocumented, so string-matching it would be a guess).
+- Automation Workflows: `graphiant_playbook_config` (bundle + module YAML,
+  validated and staged on create/update — full CRUD) and
+  `graphiant_playbook_job` (a run of a staged config). The job is a real API
+  object with a get-by-id endpoint, so it's a resource rather than an action:
+  create starts the mandatory dry-run and polls until it ends, and the
+  deploy-approval gate is the `approve` attribute, so a deploy is always an
+  explicit change in a reviewed plan. Delete aborts an in-progress or
+  unapproved job; finished jobs stay in the job history. Job status values
+  are only partly documented, so dry-run/deploy completion is detected from
+  the job's phase timestamps and `failed_phase`, not a guessed status enum.
+  Re-run with `skip_dry_run` (`V1SdkAutomationPlaybookJobsJobIdRunPost`) is
+  deliberately not exposed, since it bypasses the dry-run. Resume after
+  re-auth (`...ResumePost`) isn't exposed either, because it needs the
+  caller's freshly re-authenticated session. Read-only companions:
+  `graphiant_playbook_bundles`, `graphiant_playbook_module_slots`,
+  `graphiant_playbook_templates`, `graphiant_playbook_configs`,
+  `graphiant_playbook_jobs`, `graphiant_playbook_job`,
+  `graphiant_playbook_job_logs`.
 - Read-only data sources covering the read side of edge/site monitoring,
   alerts, troubleshooting, and routing: `graphiant_edges`,
   `graphiant_site_devices` (the closest real proxy for "site health" — see
@@ -535,10 +553,10 @@ deletes real objects; use a disposable test tenant.
 
 This provider's version tracks the Graphiant platform/SDK release it was
 built and tested against, rather than an independent SemVer sequence — e.g.
-`v26.8.2` pairs with `graphiant-sdk-go v26.8.0`. When re-syncing against a
+`v26.9.0` pairs with `graphiant-sdk-go v26.9.0`. When re-syncing against a
 new SDK release, tag with the matching version; for a provider-only fix
 against the same SDK version, increment the patch component instead (e.g.
-`v26.8.3`).
+`v26.9.1`).
 
 **[publish.yml](.github/workflows/publish.yml)** builds cross-platform
 binaries via [GoReleaser](https://goreleaser.com) (per
@@ -546,8 +564,8 @@ binaries via [GoReleaser](https://goreleaser.com) (per
 (required for the Terraform Registry), and publishes a GitHub release with
 everything attached. It triggers either way:
 
-- **Push a tag matching `v*`** (e.g. `git tag v26.8.2 && git push origin
-  v26.8.2`) — goes straight to the build/sign/publish steps.
+- **Push a tag matching `v*`** (e.g. `git tag v26.9.0 && git push origin
+  v26.9.0`) — goes straight to the build/sign/publish steps.
 - **Run it manually** from the Actions tab (`workflow_dispatch`, with a
   `version` input) — first checks that the caller has `admin` or `maintain`
   permission on the repo, then creates and pushes the tag (a no-op if it

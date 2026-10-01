@@ -48,14 +48,15 @@ resource "graphiant_enterprise" "customer" {
 - `admin_first_name` (String) Only used at creation; the API has no update endpoint for this field.
 - `admin_last_name` (String) Only used at creation; the API has no update endpoint for this field.
 - `admin_time_zone` (String) Only used at creation; the API has no update endpoint for this field.
+- `backbone_apis_enabled` (Boolean) Whether backbone APIs are enabled for the enterprise. The create endpoint has no field for this; when set, it is applied with an update right after creation.
 - `cloud_provider` (String)
 - `credit_limit` (Number)
 - `description` (String)
-- `impersonation_enabled` (Boolean) Not settable at creation; only updatable afterward.
+- `impersonation_enabled` (Boolean) The create endpoint has no field for this; when set, it is applied with an update right after creation.
 - `logo` (String)
 - `marketplace_id` (String)
-- `portal_banner` (String) Not settable at creation; only updatable afterward.
-- `proxy_tenant_id` (Number) Not settable at creation; only updatable afterward.
+- `portal_banner` (String) The create endpoint has no field for this; when set, it is applied with an update right after creation.
+- `proxy_tenant_id` (Number) The create endpoint has no field for this; when set, it is applied with an update right after creation.
 - `small_logo` (String)
 
 ### Read-Only

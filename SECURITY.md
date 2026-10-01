@@ -7,10 +7,12 @@ This provider's version tracks the Graphiant platform/SDK release it targets
 sequence. Security fixes are applied to the latest released version; we
 recommend always running the latest release.
 
-| Version | Supported          | Notes                 |
-|---------|--------------------|------------------------|
-| 26.8.2  | :white_check_mark: | First tagged release   |
-| main    | :white_check_mark: | Active development     |
+| Version | Supported          | Notes                                                              |
+|---------|--------------------|--------------------------------------------------------------------|
+| 26.9.x  | :white_check_mark: | Current release (latest: **26.9.0**, `graphiant-sdk-go` `v26.9.0`) |
+| 26.8.x  | :white_check_mark: | Previous release (latest: **26.8.2**, `graphiant-sdk-go` `v26.8.0`) |
+| < 26.8  | :x:                | Pre-release tags (`0.0.x`); no longer supported                    |
+| main    | :white_check_mark: | Active development                                                 |
 
 This table will be updated as new versions are released, the same way
 [graphiant-sdk-go](https://github.com/Graphiant-Inc/graphiant-sdk-go/blob/main/SECURITY.md)
@@ -80,6 +82,20 @@ values to plan/state files in plaintext, so treat those files as secrets too.
   restricted access rather than local `.tfstate` files in version control.
 - **Rotate credentials**: Regularly rotate API tokens and passwords, and
   revoke tokens that may have been exposed.
+
+### Automation Workflows (playbook resources)
+
+- **Keep secrets out of playbook YAML where possible**: `graphiant_playbook_config`'s
+  `files[].content` is stored in Terraform plan/state in plaintext, like any
+  other attribute, and is sent to and stored by the Graphiant service. If a
+  module needs a secret (e.g. a pre-shared key), source it from a secrets
+  manager or a `sensitive` variable, and protect state as described above.
+- **Keep the approval gate**: `graphiant_playbook_job` deploys only when
+  `approve = true`. Leave it `false` in shared configurations and approve
+  in a separate, reviewed change, rather than hardcoding `true`.
+- **Job logs**: `graphiant_playbook_job_logs` returns logs the service has
+  already masked. Still, don't copy them into outputs or other places that
+  are less protected than the Portal.
 
 ### Code Security
 
