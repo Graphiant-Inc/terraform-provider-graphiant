@@ -62,3 +62,15 @@ jobs:
         with:
           terraform_wrapper: false
       - run: make docs-check
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - run: make vulncheck

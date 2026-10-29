@@ -9,9 +9,9 @@ recommend always running the latest release.
 
 | Version | Supported          | Notes                                                              |
 |---------|--------------------|--------------------------------------------------------------------|
-| 26.9.x  | :white_check_mark: | Current release (latest: **26.9.0**, `graphiant-sdk-go` `v26.9.0`) |
-| 26.8.x  | :white_check_mark: | Previous release (latest: **26.8.2**, `graphiant-sdk-go` `v26.8.0`) |
-| < 26.8  | :x:                | Pre-release tags (`0.0.x`); no longer supported                    |
+| 26.10.x | :white_check_mark: | Current release (latest: **26.10.0**, `graphiant-sdk-go` `v26.10.0`) |
+| 26.9.x  | :white_check_mark: | Previous release (latest: **26.9.0**, `graphiant-sdk-go` `v26.9.0`) |
+| < 26.9  | :x:                | No longer supported; upgrade to a supported release                |
 | main    | :white_check_mark: | Active development                                                 |
 
 This table will be updated as new versions are released, the same way
@@ -96,6 +96,9 @@ values to plan/state files in plaintext, so treat those files as secrets too.
 - **Job logs**: `graphiant_playbook_job_logs` returns logs the service has
   already masked. Still, don't copy them into outputs or other places that
   are less protected than the Portal.
+- **Job snapshots**: `graphiant_playbook_job_snapshot` reads back the module
+  files a job ran with, so anything in those files also lands in the state
+  of the configuration that uses the data source.
 
 ### Code Security
 

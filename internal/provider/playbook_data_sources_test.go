@@ -7,9 +7,9 @@ import (
 )
 
 // The catalog data sources need no ids: module slots and templates look up the
-// first bundle graphiant_playbook_bundles returns. graphiant_playbook_job and
-// graphiant_playbook_job_logs need a real job and are covered by
-// TestAccPlaybookConfigAndJobResource instead.
+// first bundle graphiant_playbook_bundles returns. graphiant_playbook_job,
+// graphiant_playbook_job_logs and graphiant_playbook_job_snapshot need a real job
+// and are covered by TestAccPlaybookConfigAndJobResource instead.
 //
 // Disabled by default (see testAccPreCheckDisabled): these haven't been run
 // against a live tenant yet, and Automation Workflows may not be enabled on the

@@ -30,6 +30,7 @@ resource "graphiant_assurance_classified_application" "internal_erp" {
 
 ### Optional
 
+- `category` (String) Application category. When unset, the value the API returns (if any) is kept in state.
 - `ip_prefix_list` (List of String)
 - `port_list` (List of String)
 - `protocol_list` (List of String)

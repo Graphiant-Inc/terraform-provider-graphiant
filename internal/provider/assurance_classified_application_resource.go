@@ -31,6 +31,7 @@ type assuranceClassifiedApplicationResource struct {
 type assuranceClassifiedApplicationResourceModel struct {
 	ID           types.String `tfsdk:"id"`
 	AppName      types.String `tfsdk:"app_name"`
+	Category     types.String `tfsdk:"category"`
 	IPPrefixList types.List   `tfsdk:"ip_prefix_list"`
 	PortList     types.List   `tfsdk:"port_list"`
 	ProtocolList types.List   `tfsdk:"protocol_list"`
@@ -51,6 +52,12 @@ func (r *assuranceClassifiedApplicationResource) Schema(ctx context.Context, req
 			},
 			"app_name": schema.StringAttribute{
 				Required: true,
+			},
+			"category": schema.StringAttribute{
+				Optional:      true,
+				Computed:      true,
+				Description:   "Application category. When unset, the value the API returns (if any) is kept in state.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"ip_prefix_list": schema.ListAttribute{
 				Optional:    true,
@@ -75,6 +82,7 @@ func (r *assuranceClassifiedApplicationResource) Configure(ctx context.Context, 
 func (m *assuranceClassifiedApplicationResourceModel) applyEntry(ctx context.Context, e *sdk.AssuranceClassifiedApplication) diag.Diagnostics {
 	var diags diag.Diagnostics
 	m.AppName = types.StringPointerValue(e.AppName)
+	m.Category = types.StringPointerValue(e.Category)
 
 	ipPrefixList, d := types.ListValueFrom(ctx, types.StringType, e.IpPrefixList)
 	diags.Append(d...)
@@ -119,6 +127,9 @@ func (r *assuranceClassifiedApplicationResource) Create(ctx context.Context, req
 	}
 
 	body := sdk.V2AssuranceCreateclassifiedapplicationPostRequest{AppName: plan.AppName.ValueStringPointer()}
+	if !plan.Category.IsNull() && !plan.Category.IsUnknown() {
+		body.Category = plan.Category.ValueStringPointer()
+	}
 	if !plan.IPPrefixList.IsNull() && !plan.IPPrefixList.IsUnknown() {
 		resp.Diagnostics.Append(plan.IPPrefixList.ElementsAs(ctx, &body.IpPrefixList, false)...)
 	}
@@ -201,6 +212,9 @@ func (r *assuranceClassifiedApplicationResource) Update(ctx context.Context, req
 	entry := sdk.AssuranceClassifiedApplication{
 		ClassificationEntryId: &id,
 		AppName:               plan.AppName.ValueStringPointer(),
+	}
+	if !plan.Category.IsNull() && !plan.Category.IsUnknown() {
+		entry.Category = plan.Category.ValueStringPointer()
 	}
 	if !plan.IPPrefixList.IsNull() && !plan.IPPrefixList.IsUnknown() {
 		resp.Diagnostics.Append(plan.IPPrefixList.ElementsAs(ctx, &entry.IpPrefixList, false)...)

@@ -75,6 +75,12 @@ func (d *playbookJobLogsDataSource) Read(ctx context.Context, req datasource.Rea
 	lines := make([]string, 0)
 	if out != nil {
 		lines = append(lines, out.Lines...)
+		// The endpoint reports paging but takes no page/cursor parameter, so later
+		// pages can't be fetched; say so rather than silently returning partial logs.
+		if out.PageInfo != nil && out.PageInfo.GetHasNextPage() {
+			resp.Diagnostics.AddWarning("Playbook job logs truncated",
+				"The API returned only the first page of logs for job "+cfg.JobID.ValueString()+"; view the full logs in the Graphiant portal.")
+		}
 	}
 	list, diags := types.ListValueFrom(ctx, types.StringType, lines)
 	resp.Diagnostics.Append(diags...)

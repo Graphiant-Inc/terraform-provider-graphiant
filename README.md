@@ -1,6 +1,6 @@
 # Graphiant Terraform Provider
 
-[![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
+[![Go Version](https://img.shields.io/badge/go-1.26.10+-blue.svg)](https://golang.org/dl/)
 [![Terraform](https://img.shields.io/badge/terraform-1.0+-844FBA.svg)](https://developer.hashicorp.com/terraform/downloads)
 [![Terraform Plugin Framework](https://img.shields.io/badge/terraform--plugin--framework-1.19-844FBA.svg)](https://developer.hashicorp.com/terraform/plugin/framework)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -198,7 +198,7 @@ create/read/update/delete endpoints:
   companions: `graphiant_playbook_bundles`, `graphiant_playbook_module_slots`,
   `graphiant_playbook_templates`, `graphiant_playbook_configs`,
   `graphiant_playbook_jobs`, `graphiant_playbook_job`,
-  `graphiant_playbook_job_logs`. See
+  `graphiant_playbook_job_logs`, `graphiant_playbook_job_snapshot`. See
   [How-to: run an automation workflow](#how-to-run-an-automation-workflow).
 - **Devices (read-only)** — `graphiant_device` data source for a single
   onboarded edge device by ID. This provider does not manage device
@@ -227,7 +227,7 @@ create/read/update/delete endpoints:
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/) 1.25+ (only needed to build the provider yourself;
+- [Go](https://go.dev/dl/) 1.26.10+ (only needed to build the provider yourself;
   see [Local development](#local-development))
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) 1.0+
 
@@ -334,6 +334,7 @@ resource "graphiant_user" "jane" {
 | Data source | `graphiant_playbook_jobs` | Playbook job history |
 | Data source | `graphiant_playbook_job` | One playbook job, by `job_id` or latest for a `config_id` |
 | Data source | `graphiant_playbook_job_logs` | Masked ansible logs for a job, optionally by phase |
+| Data source | `graphiant_playbook_job_snapshot` | Config inputs (module files, playbook, tags) a job ran with, frozen at job creation |
 
 ## Examples
 
@@ -391,7 +392,8 @@ examples/
 ├── data-sources/graphiant_playbook_configs/data-source.tf
 ├── data-sources/graphiant_playbook_jobs/data-source.tf
 ├── data-sources/graphiant_playbook_job/data-source.tf
-└── data-sources/graphiant_playbook_job_logs/data-source.tf
+├── data-sources/graphiant_playbook_job_logs/data-source.tf
+└── data-sources/graphiant_playbook_job_snapshot/data-source.tf
 ```
 
 These are the same snippets `tfplugindocs` embeds in generated docs and on

@@ -44,6 +44,7 @@ func TestAccPlaybookConfigAndJobResource(t *testing.T) {
 					resource.TestCheckNoResourceAttr("graphiant_playbook_job.test", "deploy_started_at"),
 					resource.TestCheckResourceAttrPair("data.graphiant_playbook_job.latest", "job_id", "graphiant_playbook_job.test", "id"),
 					resource.TestCheckResourceAttrSet("data.graphiant_playbook_job_logs.test", "lines.#"),
+					resource.TestCheckResourceAttrPair("data.graphiant_playbook_job_snapshot.test", "config_id", "graphiant_playbook_config.test", "id"),
 				),
 			},
 			{
@@ -95,6 +96,10 @@ data "graphiant_playbook_job" "latest" {
 data "graphiant_playbook_job_logs" "test" {
   job_id = graphiant_playbook_job.test.id
   phase  = "dry_run"
+}
+
+data "graphiant_playbook_job_snapshot" "test" {
+  job_id = graphiant_playbook_job.test.id
 }
 `, name, description, bundleKey, moduleKey, file)
 }
