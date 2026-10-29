@@ -178,6 +178,7 @@ func (p *GraphiantProvider) DataSources(ctx context.Context) []func() datasource
 		NewPlaybookJobsDataSource,
 		NewPlaybookJobDataSource,
 		NewPlaybookJobLogsDataSource,
+		NewPlaybookJobSnapshotDataSource,
 	}
 }
 

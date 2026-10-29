@@ -1,4 +1,4 @@
-.PHONY: build test testacc sanity sanity-tf vet fmt fmt-check lint tidy install docs docs-check help
+.PHONY: build test testacc sanity sanity-tf vet fmt fmt-check lint vulncheck tidy install docs docs-check help
 
 ## build: Compile the provider binary
 build:
@@ -44,6 +44,10 @@ fmt-check:
 ## lint: Run golangci-lint (same config as CI)
 lint:
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...
+
+## vulncheck: Report known vulnerabilities in reachable code (Go toolchain and modules)
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 ## tidy: Tidy and verify go.mod / go.sum
 tidy:

@@ -3,13 +3,63 @@
 All notable changes to the Graphiant Terraform Provider are documented here,
 following the entry conventions from HashiCorp's
 [Versioning and Changelog best practices](https://developer.hashicorp.com/terraform/plugin/best-practices/versioning):
-entries are grouped as BREAKING CHANGES / NOTES / FEATURES / IMPROVEMENTS /
+entries are grouped as BREAKING CHANGES / NOTES / SECURITY / FEATURES / IMPROVEMENTS /
 BUG FIXES, each prefixed with the affected subsystem. Versioning tracks the
 Graphiant platform/SDK release the provider was built and tested against
-(e.g. `26.9.0` targets `graphiant-sdk-go` `v26.9.0`), not an independent
+(e.g. `26.10.0` targets `graphiant-sdk-go` `v26.10.0`), not an independent
 SemVer sequence starting from `0.1.0`/`1.0.0` — see
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how that plays out when
 cutting a new release.
+
+## 26.10.0 (October 29, 2026)
+
+BREAKING CHANGES:
+
+* provider: Building the provider from source now needs **Go 1.26.10** or
+  later (was 1.25.8), matching `graphiant-sdk-go` `v26.10.0`'s minimum. This
+  only affects people who build the provider themselves; Terraform users of
+  the released binaries aren't affected.
+
+NOTES:
+
+* provider: Built against `graphiant-sdk-go` `v26.10.0` (`0e6bbbe`). Per the
+  SDK changelog it has no breaking API changes, only new endpoints and
+  additive model fields.
+* resource/graphiant_assurance_classified_application: `graphiant-sdk-go`
+  `v26.10.0` now serializes `classificationEntryIdList` as a `deepObject`
+  query parameter, the fix for the Delete failure noted in 26.9.0. The
+  resource's acceptance test stays disabled until it has been run against a
+  live tenant.
+
+SECURITY:
+
+* provider: Fixed all vulnerabilities `govulncheck` reported in reachable
+  code. Moving to the Go 1.26.10 toolchain fixes the Go standard library
+  issues. Upgrading `golang.org/x/net` from v0.58.0 to v0.62.0 fixes
+  GO-2026-6603, GO-2026-6610, GO-2026-6611, GO-2026-6612, GO-2026-6617,
+  GO-2026-6860 and GO-2026-6866. The upgrade also brings `golang.org/x/crypto`
+  v0.58.0, `golang.org/x/sys` v0.49.0, `golang.org/x/text` v0.43.0 and
+  related `golang.org/x` modules. `govulncheck ./...` now reports no
+  vulnerabilities.
+* ci: Added a `govulncheck` job to the Lint workflow, plus a matching
+  `make vulncheck` target.
+
+FEATURES:
+
+* **New Data Source:** `graphiant_playbook_job_snapshot` — the config inputs
+  (bundle, module files, playbook, Ansible tags, name/description) a playbook
+  job ran with, frozen at job creation
+  (`GET /v1/sdk-automation/playbook/jobs/{jobId}/snapshot`, new in
+  `v26.10.0`).
+
+IMPROVEMENTS:
+
+* resource/graphiant_assurance_classified_application: Added the optional
+  `category` attribute (new in `v26.10.0`).
+* data-source/graphiant_playbook_job_logs: Now warns when the API reports
+  more log pages (`pageInfo.hasNextPage`, new in `v26.10.0`). The endpoint
+  takes no page/cursor parameter, so the data source can only return the
+  first page.
 
 ## 26.9.0 (October 1, 2026)
 

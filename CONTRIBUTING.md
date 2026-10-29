@@ -12,7 +12,7 @@ Thank you for your interest in contributing!
    ```
 3. **Set up your development environment:**
    ```bash
-   # Ensure Go 1.25+ is installed (enforced by go.mod)
+   # Ensure Go 1.26.10+ is installed (enforced by go.mod)
    go version
 
    # Download dependencies and verify
@@ -33,6 +33,7 @@ Thank you for your interest in contributing!
    make vet         # go vet ./...
    make fmt-check    # fail if any file isn't gofmt-formatted
    make lint        # golangci-lint, same config as CI
+   make vulncheck   # govulncheck, same as CI
    make tidy        # go mod tidy && go mod verify
 
    # Or individually:
@@ -157,7 +158,7 @@ long-lived state.
   `graphiant_playbook_bundles`, `graphiant_playbook_module_slots`,
   `graphiant_playbook_templates`, `graphiant_playbook_configs`,
   `graphiant_playbook_jobs`, `graphiant_playbook_job`,
-  `graphiant_playbook_job_logs`.
+  `graphiant_playbook_job_logs`, `graphiant_playbook_job_snapshot`.
 - Read-only data sources covering the read side of edge/site monitoring,
   alerts, troubleshooting, and routing: `graphiant_edges`,
   `graphiant_site_devices` (the closest real proxy for "site health" — see
@@ -495,6 +496,7 @@ produces a diff, so `docs/` can't silently drift from the schema or examples.
 - [ ] `make vet` passes
 - [ ] `make fmt-check` passes
 - [ ] `make lint` passes
+- [ ] `make vulncheck` reports no vulnerabilities
 - [ ] `make tidy` leaves `go.mod` and `go.sum` unchanged
 - [ ] New/changed resources and data sources have matching schema coverage
       (they'll be picked up automatically by `TestResourceSchemas`/
@@ -553,10 +555,10 @@ deletes real objects; use a disposable test tenant.
 
 This provider's version tracks the Graphiant platform/SDK release it was
 built and tested against, rather than an independent SemVer sequence — e.g.
-`v26.9.0` pairs with `graphiant-sdk-go v26.9.0`. When re-syncing against a
+`v26.10.0` pairs with `graphiant-sdk-go v26.10.0`. When re-syncing against a
 new SDK release, tag with the matching version; for a provider-only fix
 against the same SDK version, increment the patch component instead (e.g.
-`v26.9.1`).
+`v26.10.1`).
 
 **[publish.yml](.github/workflows/publish.yml)** builds cross-platform
 binaries via [GoReleaser](https://goreleaser.com) (per
@@ -564,8 +566,8 @@ binaries via [GoReleaser](https://goreleaser.com) (per
 (required for the Terraform Registry), and publishes a GitHub release with
 everything attached. It triggers either way:
 
-- **Push a tag matching `v*`** (e.g. `git tag v26.9.0 && git push origin
-  v26.9.0`) — goes straight to the build/sign/publish steps.
+- **Push a tag matching `v*`** (e.g. `git tag v26.10.0 && git push origin
+  v26.10.0`) — goes straight to the build/sign/publish steps.
 - **Run it manually** from the Actions tab (`workflow_dispatch`, with a
   `version` input) — first checks that the caller has `admin` or `maintain`
   permission on the repo, then creates and pushes the tag (a no-op if it
