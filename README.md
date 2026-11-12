@@ -643,33 +643,7 @@ Portal's job history and audit log, whoever started it.
   YAML, and a deploy when `approve = true`.
 - Data sources list the catalog, configs, runs and run logs.
 
-**Nothing reaches a device until you approve a reviewed dry-run:**
-
-```mermaid
-flowchart TB
-  yaml["<b>Your YAML files</b><br/>in version control"]
-
-  subgraph first["first terraform apply"]
-    direction LR
-    staged["<b>Config staged</b><br/>syntax validated"] --> dryrun["<b>Dry-run</b><br/>no device change"]
-  end
-
-  review{"Review the<br/>dry-run log"}
-
-  subgraph second["terraform apply -var approve=true"]
-    direction LR
-    approve["<b>Approve</b><br/>approve = true"] --> deploy["<b>Deploy</b><br/>pushed to devices"]
-    deploy --> check["<b>Post-deploy check</b><br/>expects changed=0"]
-    check --> complete["<b>Complete</b><br/>job COMPLETE"]
-  end
-
-  yaml --> first
-  first --> review
-  review -- "looks right" --> second
-  review -- "needs changes: edit the YAML" --> yaml
-
-  style complete stroke:#1a73e8,stroke-width:2px
-```
+![Nothing reaches a device until you approve a reviewed dry-run](docs/images/automation-workflows.png)
 
 Each change takes two applies: the first stages the YAML and runs the dry-run;
 after you review the log, the second deploys it. If the dry-run isn't right,
