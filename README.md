@@ -638,54 +638,264 @@ Automation Workflows pipeline as the Portal: Edit & Validate → Save & Stage �
 Dry Run → Manual Approval → Live Deployment. Every run is recorded in the
 Portal's job history and audit log, whoever started it.
 
-1. Stage the config. Create/update validate the YAML server-side and fail the
-   apply with the validation errors if it doesn't pass:
+- `graphiant_playbook_config` holds your YAML for one catalog bundle.
+- `graphiant_playbook_job` runs it: a dry-run on every apply that changes the
+  YAML, and a deploy when `approve = true`.
+- Data sources list the catalog, configs, runs and run logs.
+
+**Nothing reaches a device until you approve a reviewed dry-run:**
+
+```mermaid
+flowchart TB
+  yaml["<b>Your YAML files</b><br/>in version control"]
+
+  subgraph first["first terraform apply"]
+    direction LR
+    staged["<b>Config staged</b><br/>syntax validated"] --> dryrun["<b>Dry-run</b><br/>no device change"]
+  end
+
+  review{"Review the<br/>dry-run log"}
+
+  subgraph second["terraform apply -var approve=true"]
+    direction LR
+    approve["<b>Approve</b><br/>approve = true"] --> deploy["<b>Deploy</b><br/>pushed to devices"]
+    deploy --> check["<b>Post-deploy check</b><br/>expects changed=0"]
+    check --> complete["<b>Complete</b><br/>job COMPLETE"]
+  end
+
+  yaml --> first
+  first --> review
+  review -- "looks right" --> second
+  review -- "needs changes: edit the YAML" --> yaml
+
+  style complete stroke:#1a73e8,stroke-width:2px
+```
+
+Each change takes two applies: the first stages the YAML and runs the dry-run;
+after you review the log, the second deploys it. If the dry-run isn't right,
+you edit the YAML and the next apply starts a new dry-run.
+
+#### Step 1: Install and configure the provider
+
+Declare the provider, set credentials in the environment, and run
+`terraform init`. Terraform downloads the provider from the Terraform Registry.
+
+1. Create a working directory with a `main.tf`:
 
    ```hcl
-   resource "graphiant_playbook_config" "ntp" {
-     name       = "branch-ntp"
-     bundle_key = "system_bundle"
+   terraform {
+     required_version = ">= 1.0"
+     required_providers {
+       graphiant = {
+         source  = "Graphiant-Inc/graphiant"
+         version = ">= 26.9.0"
+       }
+     }
+   }
 
-     files = [{
-       module_key = "ntp"
-       filename   = "ntp.yaml"
-       content    = file("${path.module}/configs/ntp.yaml")
-     }]
+   # Credentials and host are read from the environment (see below).
+   provider "graphiant" {}
+
+   variable "approve" {
+     type    = bool
+     default = false
    }
    ```
 
-2. Run the dry-run. Creating the job only runs `ansible --check`; nothing
-   changes on the network:
+2. Set credentials. Use **one** of these:
 
-   ```hcl
-   resource "graphiant_playbook_job" "ntp" {
-     config_id = graphiant_playbook_config.ntp.id
-     triggers  = { files = sha256(jsonencode(graphiant_playbook_config.ntp.files)) }
-   }
+   ```bash
+   # Option A: access token
+   export GRAPHIANT_ACCESS_TOKEN="<token>"
 
-   data "graphiant_playbook_job_logs" "ntp" {
-     job_id = graphiant_playbook_job.ntp.id
-     phase  = "dry_run"
-   }
+   # Option B: username and password
+   export GRAPHIANT_USERNAME="<user@example.com>"
+   export GRAPHIANT_PASSWORD="<password>"
    ```
 
-3. Review the dry-run (`status`, the logs above), then approve it in a
-   follow-up change, so the deploy shows up as its own reviewed plan:
+   If both are set, the access token wins. The API host defaults to
+   `https://api.graphiant.com`; set `GRAPHIANT_API_HOST` only if Graphiant gave
+   you a different endpoint. Keep credentials out of `.tf` files and version
+   control.
 
-   ```hcl
-   resource "graphiant_playbook_job" "ntp" {
-     config_id = graphiant_playbook_config.ntp.id
-     triggers  = { files = sha256(jsonencode(graphiant_playbook_config.ntp.files)) }
-     approve   = true
-   }
+3. Install the provider:
+
+   ```bash
+   terraform init
    ```
 
-Changing the files changes `triggers`, which replaces the job with a fresh,
-unapproved dry-run. Set `approve` back to `false` when you change the files,
-or the new job is approved straight after its dry-run passes. Use the
-`graphiant_playbook_bundles`, `graphiant_playbook_module_slots` and
-`graphiant_playbook_templates` data sources to find bundle/module keys and
-starter YAML.
+   `terraform init` should report that it installed `graphiant-inc/graphiant`
+   26.9.0 or later.
+
+#### Step 2: Find your bundle, module and sample YAML
+
+The catalog tells you which bundle covers your change, which module slot your
+YAML fills, and gives a sample file to start from.
+
+- A **bundle** groups related modules, for example `system_bundle`,
+  `network_bundle`, `services_bundle` and `policies_bundle`.
+- A **module slot** is one kind of change within a bundle, for example
+  `interface_config_file` or `ntp_config_file`. Module keys always end in
+  `_config_file`.
+- A **template** is a sample YAML file for a module.
+
+Add these data sources to `main.tf`, changing `bundle_key` to the bundle you
+need:
+
+```hcl
+data "graphiant_playbook_bundles" "all" {}
+
+data "graphiant_playbook_module_slots" "this" {
+  bundle_key = "services_bundle"
+}
+
+data "graphiant_playbook_templates" "this" {
+  bundle_key = "services_bundle"
+}
+
+output "bundles" { value = data.graphiant_playbook_bundles.all }
+output "module_slots" { value = data.graphiant_playbook_module_slots.this }
+output "templates" { value = data.graphiant_playbook_templates.this }
+```
+
+Then run:
+
+```bash
+terraform apply
+terraform output -json templates > templates.json
+```
+
+These are read-only lookups; nothing is created. In `templates.json`, each
+entry under `files` has a `module_key`, a `filename` and the sample `content`.
+
+| Bundle | Example module keys |
+|---|---|
+| `system_bundle` | `system_config_file`, `site_config_file` |
+| `network_bundle` | `interface_config_file`, `circuit_config_file`, `vrrp_config_file`, `lag_config_file` |
+| `services_bundle` | `edge_services_config_file`, `ntp_config_file`, `dhcp_relay_config_file` |
+| `policies_bundle` | `prefix_port_list_config_file`, `traffic_policy_config_file`, `security_policy_config_file`, `nat_policy_config_file` |
+
+Modules whose key starts with `deconfigure_` remove configuration; use them to
+undo a change.
+
+#### Step 3: Write the module YAML
+
+Copy the sample for your module into its own file and edit it for your
+devices. The example below sets static DNS servers on one edge with the
+`edge_services_config_file` module, saved as `edge_services.yaml`:
+
+```yaml
+edge_services:
+  - my-edge-01:
+      dns:
+        mode: DNSModeStatic
+        static:
+          primaryIpv4: "8.8.8.8"
+          secondaryIpv4: "8.8.4.4"
+```
+
+- Each device key (`my-edge-01` above) must be the device's **current hostname
+  as shown in the Graphiant Portal**.
+- Include only the settings you want to manage. Most modules merge what you
+  list onto the device's current settings; the comments at the top of each
+  sample say how that module behaves.
+- Keep YAML files in version control next to your `.tf` files, so each change
+  is reviewed like code.
+
+#### Step 4: Create the config and run a dry-run
+
+The first `terraform apply` validates and stages your YAML, then runs a dry-run
+that reports what would change. Nothing is pushed to devices yet.
+
+Add to `main.tf`:
+
+```hcl
+resource "graphiant_playbook_config" "dns" {
+  name        = "edge-dns"
+  description = "Static DNS for edge sites"
+  bundle_key  = "services_bundle"
+
+  files = [{
+    module_key = "edge_services_config_file"
+    filename   = "edge_services.yaml"
+    content    = file("${path.module}/edge_services.yaml")
+  }]
+}
+
+resource "graphiant_playbook_job" "dns" {
+  config_id = graphiant_playbook_config.dns.id
+  approve   = var.approve
+
+  # Start a new dry-run whenever the YAML changes.
+  triggers = {
+    files = sha256(jsonencode(graphiant_playbook_config.dns.files))
+  }
+}
+
+data "graphiant_playbook_job_logs" "dns" {
+  job_id = graphiant_playbook_job.dns.id
+}
+
+output "job_status" { value = graphiant_playbook_job.dns.status }
+```
+
+Run:
+
+```bash
+terraform apply
+```
+
+When it finishes, `job_status` is `DRY_RUN_COMPLETE`, and the config appears in
+the Graphiant Portal under Automation Workflows.
+
+- If the YAML has a syntax error, the apply fails before anything is created.
+- If the dry-run fails (for example, a device name that doesn't exist), the
+  apply fails with the job's error. Fix the YAML and run `terraform apply`
+  again; Terraform starts a new dry-run.
+- The apply waits up to 30 minutes for the dry-run. Change this with
+  `wait_timeout_minutes` on the job. Set `verbose_logs = true` for more
+  detailed logs.
+
+#### Step 5: Review the dry-run
+
+The dry-run log is your change review: `terraform plan` shows changes to the
+config and job, not to devices.
+
+Read the log in either place:
+
+- **Graphiant Portal:** Automation Workflows, then your config, then the latest
+  run.
+- **Terraform:** print the log lines from the data source:
+
+  ```bash
+  terraform console <<< 'join("\n", data.graphiant_playbook_job_logs.dns.lines)'
+  ```
+
+What to check:
+
+- The diff lines (`-` old, `+` new) show exactly the settings you expect, on
+  the devices you expect.
+- The `PLAY RECAP` line ends with `failed=0`. `changed=` counts the changes
+  that would be made; `changed=0` means the devices already match your YAML.
+
+If something is wrong, edit the YAML and run `terraform apply` again. A new
+dry-run replaces the old one.
+
+#### Step 6: Approve and deploy
+
+Setting `approve` to true deploys the reviewed dry-run, then runs a post-deploy
+check that confirms the devices match.
+
+```bash
+terraform apply -var approve=true
+```
+
+Terraform updates the job in place and waits for it to finish. When it does,
+`job_status` is `COMPLETE`. The post-deploy check repeats the dry-run and
+expects `changed=0`.
+
+You can also approve the run in the Graphiant Portal instead. If you do, leave
+`approve = false` in Terraform for that run.
 
 ## Project Structure
 
