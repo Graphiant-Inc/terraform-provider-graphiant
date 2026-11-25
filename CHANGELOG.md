@@ -11,6 +11,22 @@ SemVer sequence starting from `0.1.0`/`1.0.0` — see
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how that plays out when
 cutting a new release.
 
+## Unreleased
+
+BREAKING CHANGES:
+
+* provider: Building the provider from source now needs **Go 1.26.11** or
+  later (was 1.26.10), matching `graphiant-sdk-go`'s new minimum. This only
+  affects people who build the provider themselves; Terraform users of the
+  released binaries aren't affected.
+
+SECURITY:
+
+* provider: Moving to the Go 1.26.11 toolchain fixes GO-2026-6859 (HTTP/1
+  server crash from a `MaxBytesReader` header race in `net/http`), which
+  `govulncheck` reported as reachable. `govulncheck ./...` now reports no
+  vulnerabilities.
+
 ## 26.10.0 (October 29, 2026)
 
 BREAKING CHANGES:

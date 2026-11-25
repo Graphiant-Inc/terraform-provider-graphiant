@@ -1,6 +1,6 @@
 # Graphiant Terraform Provider
 
-[![Go Version](https://img.shields.io/badge/go-1.26.10+-blue.svg)](https://golang.org/dl/)
+[![Go Version](https://img.shields.io/badge/go-1.26.11+-blue.svg)](https://golang.org/dl/)
 [![Terraform](https://img.shields.io/badge/terraform-1.0+-844FBA.svg)](https://developer.hashicorp.com/terraform/downloads)
 [![Terraform Plugin Framework](https://img.shields.io/badge/terraform--plugin--framework-1.19-844FBA.svg)](https://developer.hashicorp.com/terraform/plugin/framework)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -227,7 +227,7 @@ create/read/update/delete endpoints:
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/) 1.26.10+ (only needed to build the provider yourself;
+- [Go](https://go.dev/dl/) 1.26.11+ (only needed to build the provider yourself;
   see [Local development](#local-development))
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) 1.0+
 
