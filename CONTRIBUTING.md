@@ -12,7 +12,7 @@ Thank you for your interest in contributing!
    ```
 3. **Set up your development environment:**
    ```bash
-   # Ensure Go 1.26.10+ is installed (enforced by go.mod)
+   # Ensure Go 1.26.11+ is installed (enforced by go.mod)
    go version
 
    # Download dependencies and verify

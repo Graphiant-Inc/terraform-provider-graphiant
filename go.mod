@@ -1,6 +1,6 @@
 module github.com/Graphiant-Inc/terraform-provider-graphiant
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/Graphiant-Inc/graphiant-sdk-go v0.0.0-20261029183127-0e6bbbe6f7a9
